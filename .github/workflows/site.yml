@@ -1,0 +1,68 @@
+# Portefaix — LE SITE (.github/workflows/site.yml)
+# À chaque envoi : la syntaxe, le banc, les essais sans écran, la construction de l'application web, son essai dans un navigateur.
+# Sur main, si tout passe : la publication sur GitHub Pages (Settings › Pages › Source : GitHub Actions).
+name: site
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  construire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Godot 4.3 et ses modèles web, gardés d'une fois sur l'autre
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/portefaix/godot-4.3
+            ~/.local/share/godot/export_templates/4.3.stable
+          key: godot-4.3-stable-web
+      - name: la syntaxe des scripts (GDScript 4) et le banc
+        run: |
+          pip install -q "gdtoolkit==4.*"
+          gdparse scripts/*.gd > /dev/null && echo "les scripts se lisent"
+          node outils/banc.js
+      - name: les essais sans écran (seul, en réseau local, la connexion)
+        run: |
+          outils/godot.sh --headless --path . --import > /dev/null 2>&1 || true
+          for essai in --essai --essai-reseau --essai-compte; do
+            echo "::group::$essai"
+            timeout 300 outils/godot.sh --headless --path . -- $essai 2>&1 | grep -v -e 'Parameter "m" is null' -e 'mesh_get_surface_count'
+            test "${PIPESTATUS[0]}" = 0
+            echo "::endgroup::"
+          done
+      - name: l'application web (site/)
+        run: outils/construire.sh site
+      - name: l'essai de l'application (le manifeste, le service worker, jouer sans réseau)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+          node outils/essai-pwa.js site
+      - name: le site, pour la publication
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  publier:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: construire
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4

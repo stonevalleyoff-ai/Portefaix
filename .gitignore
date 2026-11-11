@@ -1,0 +1,6 @@
+# ce que Godot refait à l'ouverture du projet
+.godot/
+*.import
+/site/
+node_modules/
+package-lock.json

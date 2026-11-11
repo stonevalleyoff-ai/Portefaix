@@ -1,0 +1,33 @@
+; Portefaix — vider une maison hantée avant l'aube, à plusieurs, sans réveiller ce qui y dort (LISEZ-MOI.md)
+
+config_version=5
+
+[application]
+
+config/name="Portefaix"
+config/description="Des déménageurs de nuit, une maison hantée, un quota. La chose entend tout, et le chat vote les sabotages."
+run/main_scene="res://scenes/principal.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.svg"
+config/version="0.1"
+boot_splash/bg_color=Color(0.01, 0.012, 0.02, 1)
+boot_splash/show_image=false
+
+[audio]
+
+driver/enable_input=true
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+limits/opengl/max_renderable_lights=32
+limits/opengl/max_lights_per_object=16
+environment/defaults/default_clear_color=Color(0.01, 0.012, 0.02, 1)
