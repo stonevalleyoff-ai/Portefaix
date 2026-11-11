@@ -292,7 +292,7 @@ func agir() -> void:
 	var vu = regard()
 	if vu == null:
 		return
-	if vu.has_method("definir_porteurs"):
+	if vu.has_method("definir_prises"):
 		principal.vouloir("prendre" if vivant else "pousser", [vu.id])
 	elif vivant and vu.has_meta("klaxon"):
 		principal.vouloir("klaxon", [])

@@ -135,7 +135,7 @@ node outils/essai-pwa.js site
 
 ## Où en est le prototype
 
-- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (88 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
+- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (91 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
 - **Vérifié dans Chromium, l'application installable** : l'essai passe (11 vérifications) : le manifeste et ses icônes, le service worker qui s'installe et garde le jeu entier, le jeu relancé et joué seul réseau coupé.
 - **Vérifié dans Chromium** (WebGL 2, un téléphone émulé de 844 sur 390, de vrais touchers) : l'export web se charge, le menu passe au doigt, une partie commence, le joystick fait marcher jusque dans le salon, le pouce droit tourne le regard pendant qu'on marche, « Courir » reste enfoncé, « Torche » éteint la lampe. Deux pouces à la fois : le gauche tenant le joystick, le droit glisse et revient sans que la vue saute, puis glisse et la vue tourne.
 - **Vérifié dans trois Chromium à la fois** : l'essai en ligne passe (28 vérifications). Et les fonctions du salon, dans un Postgres local : les codes, six porteurs au plus, la nuit commencée fermée aux nouveaux, le ménage des vieux salons, tout refusé sans compte.

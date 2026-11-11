@@ -907,7 +907,7 @@ func _indice() -> String:
 	var vu = moi.regard()
 	if vu == null:
 		return ""
-	if vu.has_method("definir_porteurs"):
+	if vu.has_method("definir_prises"):
 		if not moi.vivant:
 			return "E : pousser" if vu.mass <= R.FANTOME_MASSE else ""
 		return "%s — %d €%s · E : prendre" % [vu.nom, vu.valeur, " (lourd : à plusieurs)" if vu.lourd() else ""]

@@ -259,8 +259,10 @@ func _seul() -> void:
 	_devant(moi, carton, 1.3)
 	await _images(3)
 	verif(moi.regard() == carton, "le porteur a un carton sous les yeux")
-	jeu.prendre(1, carton.id)
-	verif(carton.porteurs == [1] and moi.porte == carton.id and carton.prises.size() == 2, "il le prend, à deux mains")
+	verif(jeu._indice().contains("un carton") and jeu._indice().contains("prendre"), "l'écran le lui dit : « %s »" % jeu._indice())
+	moi.agir()                     # la touche d'action elle-même : E, le clic, le bouton Agir
+	verif(carton.porteurs == [1] and moi.porte == carton.id and carton.prises.size() == 2, "la touche d'action le prend, à deux mains")
+	verif(jeu._indice().contains("poser"), "et l'écran propose de le poser")
 	moi.pitch = 0.0
 	await _attendre(0.8)
 	verif(carton.global_position.y > 0.9 and carton.global_position.distance_to(moi.point_de_prise(carton.taille)) < 0.4, "le carton monte à ses mains (%.2f m du sol)" % carton.global_position.y)
@@ -269,7 +271,7 @@ func _seul() -> void:
 	verif(carton.porteurs == [1], "il le garde en main à travers la maison, jusque dans la cour")
 	_tourner(moi, Vector3(12.0, 1.6, 30.0))
 	await _attendre(0.5)
-	jeu.lacher(1, carton.id, false)
+	moi.agir()                     # la même touche le pose
 	await _attendre(1.2)
 	jeu.compter()
 	verif(moi.porte == -1 and m.dans_zone(carton.global_position), "il le pose dans la zone")
@@ -376,8 +378,14 @@ func _seul() -> void:
 	moi.bruit = R.BRUIT_PAS
 	chose.entendre(moi.global_position, moi.bruit)
 	verif(chose.mode == chose.RODE, "des pas dans la cour ne portent pas jusqu'au bureau")
-	jeu.klaxonner(1)
+	var klaxon := Vector3(m.camion.get_center().x, 1.2, m.camion.position.y)
+	moi.global_position = klaxon + Vector3(0, -1.15, -1.5)
+	_tourner(moi, klaxon)
+	await _images(3)
+	verif(jeu._indice().contains("klaxonner"), "devant le camion, l'écran propose de klaxonner")
+	moi.agir()
 	verif(chose.mode == chose.ENQUETE and jeu.etat == jeu.PARTIE, "un coup de klaxon sans le quota, si : elle vient, et le camion reste")
+	moi.global_position = cour
 	moi.bruit = 0.0
 
 	print("7. La chose")
@@ -448,6 +456,7 @@ func _seul() -> void:
 	second.pitch = -0.5
 	await _images(3)
 	avant = petit.global_position
+	second.agir()                  # mort, la touche d'action pousse (par l'hôte, comme s'il la demandait lui-même)
 	jeu.pousser(2, petit.id)
 	await _attendre(0.5)
 	verif(petit.global_position.distance_to(avant) > 0.4, "un mort pousse un carton (%.1f m)" % petit.global_position.distance_to(avant))
