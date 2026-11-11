@@ -3,7 +3,7 @@
 // un manifeste complet et ses icônes, un service worker qui s'installe et prend la page, et le jeu qui se relance et se joue seul
 // **sans réseau**, une fois venu une première fois.
 //   outils/construire.sh && node outils/essai-pwa.js site
-// Il faut Playwright et son Chromium. Il sort avec le code 0 si tout passe.
+// Il faut Playwright et son Chromium (ou NAVIGATEUR=chrome, pour le Chrome de la machine). Il sort avec le code 0 si tout passe.
 'use strict';
 const http = require('http'), fs = require('fs'), path = require('path');
 const { chromium } = require('playwright');
@@ -24,7 +24,7 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
     res.end(fs.readFileSync(f));
   });
   await new Promise(f => serveur.listen(PORT, '127.0.0.1', f));
-  const nav = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const nav = await chromium.launch({ channel: process.env.NAVIGATEUR || undefined, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await nav.newContext({ viewport: { width: 640, height: 360 } }), p = await ctx.newPage();
   const erreurs = [];
   p.on('pageerror', e => erreurs.push(e.message));

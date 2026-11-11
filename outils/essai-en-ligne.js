@@ -30,7 +30,7 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  âœ“ ' : '  âœ
   await new Promise(f => jeu.listen(PORT_JEU, '127.0.0.1', f));
   verif(page.includes('--service='), 'la page lance le jeu sur le faux service');
 
-  const nav = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
+  const nav = await chromium.launch({ channel: process.env.NAVIGATEUR || undefined, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
     '--disable-features=WebRtcHideLocalIpsWithMdns', '--autoplay-policy=no-user-gesture-required'] });
   const joueur = async nom => {
     const ctx = await nav.newContext({ viewport: { width: 640, height: 360 } }), p = await ctx.newPage();

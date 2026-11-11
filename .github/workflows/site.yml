@@ -44,11 +44,13 @@ jobs:
       - name: l'application web (site/)
         run: outils/construire.sh site
       - name: l'essai de l'application (le manifeste, le service worker, jouer sans réseau)
-        continue-on-error: true          # (il ne retient pas la publication : sur ces machines, sans carte graphique, le navigateur peut ne pas lancer le jeu)
-        timeout-minutes: 8
+        continue-on-error: true          # (il ne retient pas la publication)
+        timeout-minutes: 6
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'      # (le Chrome de la machine suffit : installer un navigateur et ses paquets système restait bloqué des minutes)
+          NAVIGATEUR: chrome
         run: |
           npm install --no-save --no-audit --no-fund playwright@1 > /dev/null
-          npx playwright install --with-deps chromium > /dev/null
           node outils/essai-pwa.js site
       - name: le site, pour la publication
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
