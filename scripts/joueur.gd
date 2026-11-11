@@ -2,6 +2,8 @@ extends CharacterBody3D
 # Portefaix — un porteur (scripts/joueur.gd)
 # Vu à la première personne. Chacun mène le sien et dit aux autres où il est, où il regarde et le bruit qu'il fait.
 # Vivant : il marche, court, s'accroupit, saute, prend, pose, lance, crie. Mort : il hante, et pousse les petits objets.
+# Ses bras sont élastiques : ils s'accrochent à ce qu'il prend, s'étirent quand il s'en éloigne, le rappellent, et s'arrachent s'il
+# tire trop. Un bras arraché repousse en quelques secondes ; d'ici là, il porte d'une seule main, deux fois moins fort.
 
 const R = preload("res://scripts/regles.gd")
 
@@ -29,6 +31,12 @@ var _cri := 0.0
 var _envoi := 0.0
 var _pas := 0.0
 var _prise_le := -1               # quand la souris a été prise (ce qu'elle dit juste après ne compte pas)
+var repousse := [0.0, 0.0]        # ce qu'il reste à chaque bras (gauche, droit) pour repousser ; 0 : il est là
+var couleur := Color.WHITE
+var _bras: Array = []             # par côté : ses tronçons, sa main, où est son bout
+var _racine_bras: Node3D
+
+const TRONCONS := 6
 
 const COULEURS := [Color(0.9, 0.55, 0.15), Color(0.2, 0.6, 0.9), Color(0.4, 0.75, 0.3), Color(0.85, 0.3, 0.5), Color(0.9, 0.85, 0.3), Color(0.6, 0.4, 0.85)]
 
@@ -72,8 +80,9 @@ func preparer(p, i: int, depart: Vector3, rang: int) -> void:
 	# le corps que voient les autres : une salopette de sa couleur, une tête
 	corps = Node3D.new()
 	add_child(corps)
+	couleur = COULEURS[rang % COULEURS.size()]
 	_mat_corps = StandardMaterial3D.new()
-	_mat_corps.albedo_color = COULEURS[rang % COULEURS.size()]
+	_mat_corps.albedo_color = couleur
 	_mat_corps.roughness = 0.9
 	_piece(corps, Vector3(0, 1.05, 0), Vector3(0.5, 0.75, 0.3))
 	_piece(corps, Vector3(0, 0.35, 0), Vector3(0.42, 0.7, 0.26))
@@ -91,6 +100,98 @@ func preparer(p, i: int, depart: Vector3, rang: int) -> void:
 	if local:
 		corps.visible = false
 		tete.get_child(tete.get_child_count() - 1).visible = false
+	_faire_bras()
+
+
+# les bras : six tronçons et une main par côté, redessinés à chaque image de l'épaule jusqu'à ce qu'ils tiennent
+func _faire_bras() -> void:
+	_racine_bras = Node3D.new()
+	_racine_bras.top_level = true
+	add_child(_racine_bras)
+	var peau := StandardMaterial3D.new()
+	peau.albedo_color = Color(0.9, 0.72, 0.58)
+	peau.roughness = 0.9
+	for cote in 2:
+		var manche := StandardMaterial3D.new()
+		manche.albedo_color = couleur
+		manche.roughness = 0.9
+		var troncons: Array = []
+		for i in TRONCONS:
+			var t := MeshInstance3D.new()
+			t.mesh = BoxMesh.new()
+			t.material_override = manche
+			_racine_bras.add_child(t)
+			troncons.append(t)
+		var paume := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(0.11, 0.11, 0.13)
+		paume.mesh = b
+		paume.material_override = peau
+		_racine_bras.add_child(paume)
+		_bras.append({"troncons": troncons, "main": paume, "manche": manche, "bout": Vector3.ZERO})
+
+
+func epaule(cote: int) -> Vector3:
+	return tete.global_transform * Vector3(-0.24 if cote == 0 else 0.24, -0.28, 0.02)
+
+
+# les mains qu'il a sur ce qu'il porte : [côté, point d'accroche dans le monde]
+func accroches() -> Array:
+	var tenu = principal.objets.get(porte)
+	var liste: Array = []
+	if tenu != null:
+		for prise in tenu.prises:
+			if prise[0] == id:
+				liste.append([prise[1], tenu.ancre(prise)])
+	return liste
+
+
+func bras_libres() -> int:
+	return (1 if repousse[0] <= 0.0 else 0) + (1 if repousse[1] <= 0.0 else 0)
+
+
+func _process(dt: float) -> void:
+	for cote in 2:
+		repousse[cote] = maxf(repousse[cote] - dt, 0.0)
+	_racine_bras.visible = vivant
+	if not vivant:
+		return
+	var tenus := accroches()
+	for cote in 2:
+		var b: Dictionary = _bras[cote]
+		var de := epaule(cote)
+		var vers: Vector3 = tete.global_transform * Vector3(-0.24 if cote == 0 else 0.24, -0.5, -0.42)       # au repos : devant lui, bas
+		var tient := false
+		for a in tenus:
+			if a[0] == cote:
+				vers = a[1]
+				tient = true
+		if repousse[cote] > 0.0:           # il repousse : un moignon, puis il s'allonge
+			vers = de.lerp(vers, clampf((2.5 - repousse[cote]) / 2.5, 0.12, 1.0))
+		if b.bout == Vector3.ZERO or b.bout.distance_to(vers) > 6.0:
+			b.bout = vers
+		b.bout = b.bout.lerp(vers, minf(1.0, dt * (24.0 if tient else 12.0)))
+		var long := de.distance_to(b.bout)
+		var milieu: Vector3 = (de + b.bout) * 0.5 + Vector3.DOWN * maxf(0.0, 0.75 - long) * 0.45        # détendu, il pend
+		var epais := 0.085 / sqrt(maxf(long / 0.7, 1.0))                                                # étiré, il s'affine
+		b.manche.albedo_color = couleur.lerp(Color(1.0, 0.12, 0.08), clampf(inverse_lerp(R.BRAS_TENDU, R.BRAS_MAX, long), 0.0, 1.0))
+		var avant := de
+		var base := Basis.IDENTITY
+		for i in TRONCONS:
+			var k := float(i + 1) / TRONCONS
+			var p: Vector3 = de.lerp(milieu, k).lerp(milieu.lerp(b.bout, k), k)
+			var d := p - avant
+			var l := d.length()
+			var t: MeshInstance3D = b.troncons[i]
+			t.visible = l > 0.001
+			if t.visible:
+				var bz := d / l
+				var bx := bz.cross(Vector3.UP)
+				bx = Vector3.RIGHT if bx.length() < 0.01 else bx.normalized()
+				base = Basis(bx, bz.cross(bx), bz)
+				t.transform = Transform3D(Basis(base.x * epais, base.y * epais, base.z * l), (avant + p) * 0.5)
+			avant = p
+		b.main.transform = Transform3D(base, b.bout)
 
 
 func _piece(parent: Node3D, c: Vector3, t: Vector3) -> void:
@@ -228,6 +329,14 @@ func _physics_process(dt: float) -> void:
 				velocity.y = R.SAUT
 		else:
 			velocity.y -= R.GRAVITE * dt
+		# ses bras tendus le rappellent vers ce qu'il tient
+		for a in accroches():
+			var e := epaule(a[0])
+			var trop: float = e.distance_to(a[1]) - R.BRAS_TENDU
+			if trop > 0.0:
+				var tire: Vector3 = (a[1] - e).normalized() * trop * R.BRAS_RAPPEL * dt
+				velocity.x += tire.x
+				velocity.z += tire.z
 		move_and_slide()
 		# le bruit qu'il fait : ses pas, son cri, et son vrai micro
 		var b := 0.0

@@ -100,71 +100,174 @@ func _pilote(j) -> void:
 
 # --- seul ---
 
+# poser un objet là, à plat, immobile (l'essai le veut à un endroit dégagé et connu)
+func _mettre(o, ou: Vector3) -> void:
+	o.decrocher()
+	o.global_position = ou
+	o.rotation = Vector3.ZERO
+	o.linear_velocity = Vector3.ZERO
+	o.angular_velocity = Vector3.ZERO
+	o.sleeping = false
+
+
+# les maisons inventées : douze graines, et ce qu'on attend de chacune
+func _maisons() -> void:
+	print("0. Les maisons inventées")
+	var Maison = load("res://scripts/maison.gd")
+	var Amenagement = load("res://scripts/amenagement.gd")
+	var jointes := true
+	var metiers := true
+	var meublees := true
+	var portes_libres := true
+	var rangees := true
+	var plans := {}
+	var moins := 999
+	var plus := 0
+	var pieces_min := 99
+	var portes_min := 99
+	for graine in range(1, 13):
+		var m = Maison.new()
+		m.construire(graine)
+		var h := RandomNumberGenerator.new()
+		h.seed = graine + 1
+		var a = Amenagement.new()
+		a.amenager(m, h)
+		plans["".join(m.plan)] = true
+		pieces_min = mini(pieces_min, m.pieces.size())
+		portes_min = mini(portes_min, m.portes.size())
+		for z in m.profondeur:
+			for x in m.largeur:
+				if m.plan[z][x] != "#" and m.grille.get_id_path(m.case_de(m.seuil), Vector2i(x, z)).is_empty():
+					jointes = false
+		var vus := {}
+		for p in m.pieces:
+			vus[p.type] = true
+		metiers = metiers and vus.has("salon") and vus.has("cuisine") and vus.has("chambre") and vus.has("manger") and vus.has("entree")
+		var types := {}
+		for o in a.objets:
+			types[o.type] = true
+			rangees = rangees and m.dedans(o.pos) and m.lettre(int(o.pos.x), int(o.pos.z)) == "."
+			if not o.accroche and o.pos.y < 1.0:            # rien au sol devant une porte
+				for p in m.pieces:
+					for libre in m.devants_de_porte(p.rect):
+						if libre.grow(-0.05).has_point(Vector2(o.pos.x, o.pos.z)):
+							portes_libres = false
+		meublees = meublees and types.has("canape") and types.has("lit") and types.has("table") and types.has("frigo") and types.has("tele") and types.has("tableau")
+		moins = mini(moins, a.objets.size())
+		plus = maxi(plus, a.objets.size())
+		if graine == 1:                 # la même graine : la même maison, meublée pareil
+			var m2 = Maison.new()
+			m2.construire(1)
+			var h2 := RandomNumberGenerator.new()
+			h2.seed = 2
+			var a2 = Amenagement.new()
+			a2.amenager(m2, h2)
+			var pareil: bool = m2.plan == m.plan and a2.objets.size() == a.objets.size()
+			for i in mini(a.objets.size(), a2.objets.size()):
+				pareil = pareil and a.objets[i].type == a2.objets[i].type and a.objets[i].pos.is_equal_approx(a2.objets[i].pos)
+			verif(pareil, "une même graine donne la même maison, meublée pareil (chez tous les joueurs)")
+			m2.free()
+		m.free()
+	verif(plans.size() == 12, "douze graines, douze plans différents")
+	verif(jointes, "dans chacune, tout le sol se rejoint depuis l'entrée : personne n'est enfermé")
+	verif(metiers and pieces_min >= 6, "chacune a son salon, sa cuisine, sa salle à manger, une chambre (%d pièces au moins)" % pieces_min)
+	verif(portes_min >= 6, "des portes partout : %d au moins par maison" % portes_min)
+	verif(meublees and moins >= 40, "chacune est meublée : un canapé, une télé, un lit, une table, un frigo, des tableaux (de %d à %d objets)" % [moins, plus])
+	verif(rangees and portes_libres, "tout est posé sur du sol, dans la maison, et rien ne barre une porte")
+
+
+# --- seul ---
+
 func _seul() -> void:
-	jeu.graine = 7                 # toujours la même maison : l'essai ne dépend pas du hasard (-- --essai --graine=12 en essaie une autre)
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--graine="):
-			jeu.graine = int(a.get_slice("=", 1))
+	_maisons()
+	jeu.graine = -7                # la maison d'essai, toujours la même : l'essai ne dépend pas du hasard
 	jeu.jouer_seul()
 	await _attendre(0.3)
 	jeu.repit = 1e9
 	jeu.chat.reste = 1e9
 	var m = jeu.maison
 	var moi = jeu.moi
+	var cour := Vector3(m.porte_x, 0.05, m.profondeur + 4.0)
 
-	print("1. La maison")
+	print("1. La maison d'essai")
 	var lignes_egales := true
 	var sols := 0
 	var atteints := 0
 	var entree: Vector2i = m.case_de(m.depart(0))
-	for l in m.PLAN.size():
-		lignes_egales = lignes_egales and m.PLAN[l].length() == m.largeur
-		for c in m.PLAN[l].length():
-			if m.PLAN[l][c] != "#":
+	for l in m.plan.size():
+		lignes_egales = lignes_egales and m.plan[l].length() == m.largeur
+		for c in m.plan[l].length():
+			if m.plan[l][c] != "#":
 				sols += 1
 				if m.grille.get_id_path(entree, Vector2i(c, l)).size() > 0:
 					atteints += 1
-	verif(lignes_egales and m.portes.size() == 5 and m.lampes.size() == m.LAMPES.size(), "un plan de %d sur %d cases, 5 portes à claquer, %d lampes" % [m.largeur, m.profondeur, m.lampes.size()])
+	verif(lignes_egales and m.portes.size() == 5 and m.lampes.size() >= m.pieces.size(), "un plan de %d sur %d cases, %d pièces, 5 portes à claquer, %d lampes" % [m.largeur, m.profondeur, m.pieces.size(), m.lampes.size()])
 	verif(sols > 200 and atteints == sols, "les %d cases de sol se rejoignent toutes depuis la cour" % sols)
-	verif(m.chemin(m.TANIERE, Vector3(12, 0, 20)).size() > 10, "la chose a un chemin de sa tanière au camion")
+	verif(m.chemin(m.taniere, Vector3(12, 0, 20)).size() > 10 and m.taniere.distance_to(Vector3(22.5, 0, 3.5)) < 0.1, "la tanière est la pièce la plus loin de l'entrée (le bureau), et la chose a un chemin jusqu'au camion")
 	verif(m.dans_zone(Vector3(12, 0.5, 19.5)) and not m.dans_zone(Vector3(12, 0.5, 14)), "la zone de chargement est dans la cour, devant la porte")
 
 	print("2. Les meubles")
 	var dedans := true
+	var nombre: int = jeu.objets.size()
 	for o in jeu.objets.values():
 		dedans = dedans and m.dedans(o.global_position)
-	verif(jeu.objets.size() == R.MOBILIER.size() and dedans, "%d meubles, tous dans la maison, pour %d €" % [jeu.objets.size(), jeu.total])
+	verif(nombre >= 40 and dedans, "%d objets, tous dans la maison, pour %d €" % [nombre, jeu.total])
 	verif(jeu.quota == R.quota(jeu.total, 1) and jeu.quota > 0 and jeu.quota < jeu.total / 2, "le quota d'un porteur seul : %d €" % jeu.quota)
 	verif(R.quota(jeu.total, 4) > jeu.quota and R.quota(jeu.total, 9) <= int(jeu.total * R.QUOTA_MAX) + 10, "il monte avec le nombre de porteurs, sans passer %d %%" % int(R.QUOTA_MAX * 100))
+	var tele = _trouver("tele")
+	var meuble = _trouver("meuble_tele")
+	var canape = _trouver("canape")
+	var tableau = _trouver("tableau")
+	verif(tele != null and meuble != null and canape != null and tableau != null and _trouver("piano") != null and _trouver("lit") != null, "le salon a son canapé, sa télé, son piano ; la chambre son lit ; des tableaux aux murs")
+	var places: Dictionary = {}
+	for o in jeu.objets.values():
+		places[o.id] = o.global_position
 	await _attendre(2.4)
 	var poses := true
 	var intacts := true
+	var bouge := 0.0
 	for o in jeu.objets.values():
-		poses = poses and m.dedans(o.global_position) and o.global_position.y > 0.0 and o.global_position.y < 1.2
+		poses = poses and m.dedans(o.global_position) and o.global_position.y > 0.0 and o.global_position.y < R.HAUTEUR
 		intacts = intacts and o.valeur == o.valeur_neuve
-	verif(poses and intacts, "posés, ils tiennent sur le plancher, sans rien casser")
+		bouge = maxf(bouge, o.global_position.distance_to(places[o.id]))
+	verif(poses and intacts and bouge < 0.15, "posés, ils restent où on les a mis, sans rien casser (le plus remuant a bougé de %d cm)" % int(bouge * 100))
+	verif(tele.global_position.y > meuble.global_position.y + 0.4 and Vector2(tele.global_position.x - meuble.global_position.x, tele.global_position.z - meuble.global_position.z).length() < 0.1,
+		"la télé est sur son meuble")
+	var face: Vector3 = canape.global_transform.basis.z
+	var vers_tele: Vector3 = (tele.global_position - canape.global_position) * Vector3(1, 0, 1)
+	verif(face.dot(vers_tele.normalized()) > 0.7, "et le canapé la regarde")
+	verif(tableau.accroche and tableau.freeze and tableau.global_position.y > 1.2, "un tableau tient à son mur, à hauteur d'yeux")
 	var chose = jeu.chose
-	chose.entendre(m.TANIERE + Vector3(3, 0, 0), 10.0)
+	chose.entendre(m.taniere + Vector3(3, 0, 0), 10.0)
 	verif(chose.mode == chose.DORT and not chose.visible, "la chose dort dans le bureau ; un bruit modeste ne la réveille pas")
-	chose.entendre(m.TANIERE + Vector3(3, 0, 0), 20.0)
+	chose.entendre(m.taniere + Vector3(3, 0, 0), 20.0)
 	verif(chose.mode == chose.ENQUETE, "un grand fracas, si, avant l'heure")
 	chose.mode = chose.DORT       # qu'elle laisse l'essai porter en paix
 
 	print("3. Porter")
 	_pilote(moi)
+	_tourner(moi, tableau.global_position)
+	moi.global_position = tableau.global_position + tableau.global_transform.basis.z * 1.5 + Vector3(0, -1.5, 0)
+	_tourner(moi, tableau.global_position)
+	await _images(3)
+	jeu.prendre(1, tableau.id)
+	verif(tableau.porteurs == [1] and not tableau.accroche and not tableau.freeze, "pris, le tableau se décroche")
+	jeu.lacher(1, tableau.id, false)
 	var carton = _trouver("carton")
+	_mettre(carton, Vector3(4.5, 0.3, 7.5))            # au bout du couloir
+	await _attendre(0.5)
 	_devant(moi, carton, 1.3)
 	await _images(3)
-	verif(moi.regard() == carton, "le porteur a le carton sous les yeux")
+	verif(moi.regard() == carton, "le porteur a un carton sous les yeux")
 	jeu.prendre(1, carton.id)
-	verif(carton.porteurs == [1] and moi.porte == carton.id, "il le prend")
+	verif(carton.porteurs == [1] and moi.porte == carton.id and carton.prises.size() == 2, "il le prend, à deux mains")
 	moi.pitch = 0.0
 	await _attendre(0.8)
 	verif(carton.global_position.y > 0.9 and carton.global_position.distance_to(moi.point_de_prise(carton.taille)) < 0.4, "le carton monte à ses mains (%.2f m du sol)" % carton.global_position.y)
 	verif(moi.frein() < 1.0 and moi.frein() > 0.8, "un carton le ralentit à peine (%d %%)" % int(moi.frein() * 100))
-	await _marcher(moi, Vector3(12.0, 0.05, 18.3))
+	await _marcher(moi, cour + Vector3(0, 0, -1.7))
 	verif(carton.porteurs == [1], "il le garde en main à travers la maison, jusque dans la cour")
-	_tourner(moi, Vector3(12.0, 0.0, 30.0))
+	_tourner(moi, Vector3(12.0, 1.6, 30.0))
 	await _attendre(0.5)
 	jeu.lacher(1, carton.id, false)
 	await _attendre(1.2)
@@ -172,8 +275,51 @@ func _seul() -> void:
 	verif(moi.porte == -1 and m.dans_zone(carton.global_position), "il le pose dans la zone")
 	verif(jeu.charge == carton.valeur and jeu.charge > 0, "le chargement compte le carton : %d €" % jeu.charge)
 
-	print("4. Les lourds")
-	var canape = _trouver("canape")
+	print("4. Les bras")
+	var petit = _trouver("carton", 1)
+	_mettre(petit, Vector3(18.0, 0.3, 20.0))           # dans la cour, hors de la zone
+	await _attendre(0.5)
+	_devant(moi, petit, 1.3)
+	await _images(3)
+	jeu.prendre(1, petit.id)
+	moi.pitch = 0.0
+	await _attendre(0.6)
+	var mains: Array = moi.accroches()
+	verif(mains.size() == 2 and mains[0][0] != mains[1][0] and mains[0][1].distance_to(mains[1][1]) > 0.3, "ses deux mains s'accrochent au carton, une de chaque côté")
+	var gauche: Vector3 = mains[0][1] if mains[0][0] == 0 else mains[1][1]
+	var droite: Vector3 = mains[1][1] if mains[0][0] == 0 else mains[0][1]
+	verif((droite - gauche).dot(moi.tete.global_transform.basis.x) > 0.2, "la gauche à gauche, la droite à droite")
+	verif(moi.epaule(0).distance_to(gauche) < R.BRAS_TENDU, "ses bras ne sont pas tendus")
+	jeu.arracher(1, 1, petit.id)
+	verif(petit.prises.size() == 1 and petit.prises[0][1] == 0 and moi.porte == petit.id and moi.repousse[1] > 0.0 and moi.bras_libres() == 1,
+		"un bras arraché : il tient encore de l'autre")
+	await _attendre(0.8)
+	verif(petit.global_position.y > 0.8, "d'un seul bras, le carton reste en l'air (%.2f m)" % petit.global_position.y)
+	jeu.lacher(1, petit.id, false)
+	await _attendre(0.6)
+	jeu.prendre(1, petit.id)
+	verif(petit.prises.size() == 1 and petit.prises[0][1] == 0, "il le reprend : d'une main, l'autre n'a pas repoussé")
+	jeu.lacher(1, petit.id, false)
+	jeu.bras[1] = [0.0, 0.05]
+	moi.repousse[1] = 0.05
+	await _attendre(0.3)
+	jeu.prendre(1, petit.id)
+	verif(petit.prises.size() == 2 and moi.bras_libres() == 2, "le bras repousse (en %d s) : il reprend à deux mains" % int(R.BRAS_REPOUSSE))
+	await _attendre(0.5)
+	moi.global_position += Vector3(0, 0, 9.0)          # il s'en va d'un coup, bien trop loin
+	await _images(4)
+	verif(petit.prises.is_empty() and moi.porte == -1 and moi.bras_libres() == 0, "tiré de trop loin (plus de %.1f m), ses deux bras s'arrachent, et le carton tombe" % R.BRAS_MAX)
+	moi.global_position = Vector3(18.0, 0.05, 21.3)
+	_tourner(moi, petit.global_position)
+	await _images(3)
+	jeu.prendre(1, petit.id)
+	verif(petit.prises.is_empty() and moi.porte == -1, "sans bras, il ne prend plus rien")
+	jeu.bras[1] = [0.0, 0.0]
+	moi.repousse = [0.0, 0.0]
+
+	print("5. Les lourds")
+	_mettre(canape, Vector3(5.0, 0.45, 20.0))          # dans la cour, à l'aise
+	await _attendre(0.8)
 	var piece := Vector3(canape.global_position.x, 0.0, canape.global_position.z)
 	_devant(moi, canape, 2.0)
 	moi.pitch = 0.0
@@ -183,21 +329,23 @@ func _seul() -> void:
 	await _attendre(1.2)
 	verif(canape.porteurs == [1] and canape.lourd() and canape.global_position.y < sol + 0.25, "seul, le canapé (%d kg) ne décolle pas" % int(canape.mass))
 	verif(moi.frein() < 0.5, "et il ralentit son porteur de plus de moitié")
-	moi.global_position += Vector3(0, 0, 1.5)
+	moi.global_position += Vector3(0, 0, 1.2)
 	await _attendre(2.0)
 	var traine := Vector2(canape.global_position.x - piece.x, canape.global_position.z - piece.z).length()
-	verif(traine > 0.3, "mais il se traîne (%.1f m en deux secondes)" % traine)
+	verif(traine > 0.3 and canape.porteurs == [1], "mais il se traîne (%.1f m en deux secondes)" % traine)
 	var second = jeu.ajouter_joueur(2, moi.global_position, 1)
 	_pilote(second)
 	second.yaw = moi.yaw
 	await _images(2)
 	jeu.prendre(2, canape.id)
 	await _attendre(2.2)
-	verif(canape.porteurs.size() == 2 and canape.global_position.y > sol + 0.3, "à deux, il se soulève (%.2f m)" % canape.global_position.y)
+	verif(canape.porteurs.size() == 2 and canape.prises.size() == 4 and canape.global_position.y > sol + 0.3, "à deux, quatre mains dessus, il se soulève (%.2f m)" % canape.global_position.y)
 	jeu.lacher(1, canape.id, false)
 	jeu.lacher(2, canape.id, false)
 	verif(canape.porteurs.is_empty() and moi.porte == -1 and second.porte == -1, "ils le lâchent")
 	var chaise = _trouver("chaise")
+	_mettre(chaise, Vector3(8.5, 0.5, 19.0))
+	await _attendre(0.6)
 	_devant(moi, chaise, 1.3)
 	await _images(3)
 	jeu.prendre(1, chaise.id)
@@ -208,23 +356,22 @@ func _seul() -> void:
 	verif(chaise.porteurs.is_empty() and chaise.linear_velocity.length() > 5.0, "une chaise se lance (%.1f m/s)" % chaise.linear_velocity.length())
 	var avant: Vector3 = chaise.global_position
 
-	print("5. La casse et le bruit")
-	moi.global_position = Vector3(12.0, 0.05, 20.0)      # dans la cour, hors de vue
-	second.global_position = Vector3(13.5, 0.05, 20.0)
+	print("6. La casse et le bruit")
+	moi.global_position = cour      # dans la cour, hors de vue
+	second.global_position = cour + Vector3(1.5, 0, 0)
 	chose.mode = chose.DORT
-	chose.global_position = m.TANIERE
+	chose.global_position = m.taniere
 	chose.reveiller()
 	await _images(2)
 	verif(chose.mode == chose.RODE and chose.visible, "à son heure, la chose se réveille et rôde")
 	var vase = _trouver("vase")
-	chose.global_position = m.centre(m.case_de(vase.global_position + Vector3(0, 0, 2)))
+	chose.global_position = Vector3(12.5, 0.0, 10.5)
 	chose._roder(60.0)
-	vase.global_position = Vector3(vase.global_position.x, 2.3, vase.global_position.z)
-	vase.linear_velocity = Vector3.ZERO
+	_mettre(vase, Vector3(12.5, 2.3, 7.5))             # lâché de haut, dans le couloir
 	await _attendre(1.3)
 	verif(vase.valeur < vase.valeur_neuve, "un vase tombé de deux mètres perd de sa valeur (%d € sur %d)" % [vase.valeur, vase.valeur_neuve])
 	verif(chose.mode == chose.ENQUETE, "la chose l'a entendu : elle va voir")
-	chose.global_position = m.TANIERE
+	chose.global_position = m.taniere
 	chose._roder(60.0)
 	moi.bruit = R.BRUIT_PAS
 	chose.entendre(moi.global_position, moi.bruit)
@@ -233,7 +380,7 @@ func _seul() -> void:
 	verif(chose.mode == chose.ENQUETE and jeu.etat == jeu.PARTIE, "un coup de klaxon sans le quota, si : elle vient, et le camion reste")
 	moi.bruit = 0.0
 
-	print("6. La chose")
+	print("7. La chose")
 	var poser := func(ou: Vector3, vers: Vector3):     # la chose, là, tournée vers ce point, prête à voir
 		chose.global_position = ou
 		chose._roder(60.0)
@@ -278,11 +425,11 @@ func _seul() -> void:
 	moi.global_position = Vector3(4.5, 0.05, 3.0)        # dans la chambre : un mur entre eux
 	await _attendre(0.5)
 	verif(chose.mode == chose.RODE, "derrière un mur, à six mètres, elle ne voit rien")
-	poser.call(m.SEUIL, Vector3(12.0, 0.0, 20.0))
+	poser.call(m.seuil, Vector3(12.0, 0.0, 20.0))
 	moi.global_position = Vector3(12.0, 0.05, 17.5)
 	await _attendre(0.5)
 	verif(chose.mode == chose.RODE, "dans la cour, à trois mètres du seuil, elle ne voit pas le porteur non plus")
-	poser.call(Vector3(12.0, 0.0, 8.0), m.SEUIL)
+	poser.call(Vector3(12.0, 0.0, 8.0), m.seuil)
 	moi.global_position = Vector3(12.0, 0.05, 12.5)
 	await _attendre(0.5)
 	verif(chose.mode == chose.ALERTE and chose.proie == 1, "dans l'entrée, elle le voit et crie")
@@ -291,11 +438,12 @@ func _seul() -> void:
 	verif(chose.mode != chose.CHASSE and chose.mode != chose.ALERTE and m.dedans(chose.global_position) and moi.vivant and not moi.blesse,
 		"sorti dans la cour, il la sème : elle ne passe pas le seuil")
 	moi.global_position = Vector3(12.0, 0.05, 20.0)
-	chose.global_position = m.TANIERE
+	chose.global_position = m.taniere
 	chose._roder(60.0)
 
-	print("7. Le mort")
-	var petit = _trouver("carton", 1)
+	print("8. Le mort")
+	_mettre(petit, Vector3(18.0, 0.3, 20.0))
+	await _attendre(0.5)
 	_devant(second, petit, 1.5)
 	second.pitch = -0.5
 	await _images(3)
@@ -311,7 +459,7 @@ func _seul() -> void:
 	await _attendre(0.4)
 	verif(canape.global_position.distance_to(avant) < 0.05 and petit.porteurs.is_empty(), "mais ni un canapé, ni rien qu'il puisse porter")
 
-	print("8. Le chat")
+	print("9. Le chat")
 	var chat = jeu.chat
 	chat.ouvrir()
 	var distincts := {}
@@ -336,10 +484,10 @@ func _seul() -> void:
 	for nom in jeu.effets:
 		jeu.effets[nom].reste = 0.0
 	await _attendre(0.2)
-	chose.global_position = m.TANIERE
+	chose.global_position = m.taniere
 	chose._roder(60.0)
 
-	print("9. Les sabotages")
+	print("10. Les sabotages")
 	jeu.sabotage("noir", 0.5, -1, Vector3.ZERO)
 	verif(not m.eclairee and not m.lampes[0].lumiere.visible, "le courant coupé, la maison est noire")
 	await _attendre(0.8)
@@ -365,12 +513,12 @@ func _seul() -> void:
 	verif(piano.gravity_scale < 0.1 and piano.global_position.y > sol + 0.3, "en apesanteur, le piano décolle (%.2f m)" % (piano.global_position.y - sol))
 	await _attendre(1.6)
 	verif(is_equal_approx(piano.gravity_scale, 1.0) and piano.global_position.y < sol + 0.2, "puis il retombe")
-	chose.global_position = m.TANIERE
+	chose.global_position = m.taniere
 	chose._roder(60.0)
 	jeu._sur_vote("vacarme")
 	verif(chose.mode == chose.ENQUETE, "un vacarme sur un porteur : la chose y court")
 
-	print("10. La fin")
+	print("11. La fin")
 	jeu.compter()
 	verif(jeu.charge > 0 and jeu.charge < jeu.quota, "le carton de la zone ne fait pas le quota (%d € sur %d)" % [jeu.charge, jeu.quota])
 	jeu.quota = jeu.charge
@@ -379,7 +527,7 @@ func _seul() -> void:
 	jeu.lancer()
 	await _attendre(0.3)
 	jeu.repit = 1e9
-	verif(jeu.etat == jeu.PARTIE and jeu.objets.size() == R.MOBILIER.size() and jeu.joueurs.size() == 1 and jeu.charge == 0, "une autre maison : une nuit neuve, les mêmes règles")
+	verif(jeu.etat == jeu.PARTIE and jeu.objets.size() == nombre and jeu.joueurs.size() == 1 and jeu.charge == 0, "une autre maison : une nuit neuve, les mêmes règles")
 	verif(get_tree().get_nodes_in_group("rien").is_empty() and jeu.get_node("Monde") == jeu.monde, "l'ancienne maison est partie")
 	jeu.temps = 0.05
 	await _attendre(0.3)
@@ -427,7 +575,7 @@ func _hote() -> void:
 	jeu.chat.reste = 1e9
 	await _attendre(2.6)
 	var moi = jeu.moi
-	verif(jeu.joueurs.size() == 2 and jeu.joueurs.has(lui) and jeu.quota == R.quota(jeu.total, 2), "la nuit commence à deux, le quota est celui de deux porteurs (%d €)" % jeu.quota)
+	verif(jeu.joueurs.size() == 2 and jeu.joueurs.has(lui) and jeu.quota == R.quota(jeu.total, 2) and jeu.maison.pieces.size() >= 6 and jeu.objets.size() >= 40, "la nuit commence à deux, le quota est celui de deux porteurs (%d €)" % jeu.quota)
 	verif(jeu.joueurs[lui].nom == "Invité d'essai" and moi.nom == "Porteur", "dans la partie, chacun porte son pseudo")
 	var ou: Array = []
 	for i in jeu.objets.size():
@@ -436,29 +584,34 @@ func _hote() -> void:
 
 	_pilote(moi)
 	var carton = _trouver("carton")
-	moi.global_position = Vector3(12.0, 0.05, 20.0)
+	var cour: Vector3 = jeu.maison.depart(0)             # (la maison est inventée : on se repère à sa cour)
+	moi.global_position = cour
 	moi.yaw = 0.0
-	carton.global_position = moi.point_de_prise(carton.taille)
+	await _images(2)
+	_mettre(carton, moi.point_de_prise(carton.taille))
 	jeu.prendre(1, carton.id)
 	await _attendre(1.0)
-	await _rapport("porte", "objet", [carton.id, carton.global_position, [1]], "l'invité voit le carton dans les mains de l'hôte, au même endroit")
+	verif(carton.prises.size() == 2 and carton.porteurs == [1], "l'hôte prend un carton, à deux mains")
+	await _rapport("porte", "objet", [carton.id, carton.global_position, [1], 2], "l'invité voit le carton dans les mains de l'hôte, au même endroit, tenu par ses deux bras")
 
 	var chaise = _trouver("chaise")
-	chaise.global_position = Vector3(16.0, 0.5, 19.0)
-	chaise.linear_velocity = Vector3.ZERO
+	var la := cour + Vector3(4.0, 0.0, -1.0)
+	_mettre(chaise, la + Vector3(0, 0.5, 0))
 	await _attendre(1.0)
 	var sol: float = chaise.global_position.y
-	await _rapport("prend", "prends", [chaise.id, Vector3(16.0, 0.05, 20.3)], "l'invité demande la chaise à l'hôte, et l'a en main")
+	await _rapport("prend", "prends", [chaise.id, la + Vector3(0, 0, 1.3)], "l'invité demande la chaise à l'hôte, et l'a en main")
 	await _attendre(0.8)
 	var j = jeu.joueurs[lui]
-	verif(j.global_position.distance_to(Vector3(16.0, 0.05, 20.3)) < 0.5, "l'hôte voit l'invité là où il s'est mis")
+	verif(j.global_position.distance_to(la + Vector3(0, 0, 1.3)) < 0.5, "l'hôte voit l'invité là où il s'est mis")
 	verif(chaise.porteurs == [lui] and j.porte == chaise.id and chaise.global_position.y > sol + 0.4, "chez l'hôte, la chaise monte aux mains de l'invité (%.2f m)" % chaise.global_position.y)
 
 	jeu.chose.reveiller()
-	jeu.chose.global_position = Vector3(5.5, 0.0, 7.5)
+	jeu.chose.global_position = jeu.maison.taniere
 	jeu.chose._roder(60.0)
 	await _attendre(0.5)
 	await _rapport("chose", "chose", [jeu.chose.global_position], "l'invité voit la chose réveillée, là où elle est")
+	jeu.arracher(lui, 0, chaise.id)
+	await _rapport("bras", "bras", [chaise.id], "un bras de l'invité s'arrache : il le sait, et tient encore la chaise de l'autre")
 	jeu.sabotage.rpc("noir", 5.0, -1, Vector3.ZERO)
 	await _rapport("noir", "noir", [], "le courant coupé l'est aussi chez l'invité")
 	jeu.tuer(lui)
@@ -496,7 +649,7 @@ func etape(nom: String, quoi: String, args: Array) -> void:
 		"objet":
 			await _attendre(0.4)
 			var o = jeu.objets[args[0]]
-			bon = o.global_position.distance_to(args[1]) < 0.4 and o.porteurs == args[2]
+			bon = o.global_position.distance_to(args[1]) < 0.4 and o.porteurs == args[2] and o.prises.size() == args[3] and jeu.joueurs[1].accroches().size() == args[3]
 		"prends":
 			var o = jeu.objets[args[0]]
 			moi.global_position = args[1]
@@ -506,6 +659,9 @@ func etape(nom: String, quoi: String, args: Array) -> void:
 			moi.pitch = 0.0
 			await _attendre(0.8)
 			bon = o.porteurs == [jeu.mon_id] and moi.porte == o.id
+		"bras":
+			var o = jeu.objets[args[0]]
+			bon = moi.repousse[0] > 0.0 and moi.bras_libres() == 1 and o.prises.size() == 1 and moi.porte == o.id
 		"chose":
 			bon = jeu.chose.mode != jeu.chose.DORT and jeu.chose.visible and jeu.chose.global_position.distance_to(args[0]) < 1.0
 		"noir":

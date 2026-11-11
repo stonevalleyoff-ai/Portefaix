@@ -2,7 +2,7 @@
 
 *Videz la maison avant l'aube. Ne réveillez pas ce qui y dort.*
 
-Un prototype en Godot 4.3, en 3D, à la première personne, pour 1 à 6 joueurs. Il se joue au clavier et à la souris, ou au doigt, et dans un navigateur (seul). Des déménageurs de nuit vident une maison hantée : il faut charger pour un quota d'euros dans la zone du camion avant 6 h. Les meubles sont lourds et fragiles, la chose qui dort au fond de la maison entend tout, et le public du stream vote les sabotages.
+Un prototype en Godot 4.3, en 3D, à la première personne, pour 1 à 6 joueurs. Chaque nuit a sa maison, inventée et meublée comme une vraie ; on la vide avec des bras élastiques, qui s'arrachent si l'on tire trop. Il se joue au clavier et à la souris, ou au doigt, et dans un navigateur (seul). Des déménageurs de nuit vident une maison hantée : il faut charger pour un quota d'euros dans la zone du camion avant 6 h. Les meubles sont lourds et fragiles, la chose qui dort au fond de la maison entend tout, et le public du stream vote les sabotages.
 
 C'est un prototype : il sert à savoir si la boucle de jeu est drôle, pas à être beau. Tout y est fait de boîtes et de sons fabriqués par le code ; il n'y a aucun fichier d'image ni de son.
 
@@ -48,8 +48,11 @@ outils/godot.sh --path .
 
 ## Les règles
 
-- **Le quota** : 30 % de la valeur de la maison pour un porteur seul, 6 % de plus par porteur, 60 % au plus. Ce qui compte est ce qui est **posé** dans la zone jaune, à sa valeur du moment.
-- **Porter** : chaque porteur donne une force limitée. Seul, on soulève jusqu'à 45 kg ; à deux, 90 ; à trois, 135. Ce qui pèse plus se traîne. Ce qu'on porte ralentit, et échappe des mains si l'on s'en éloigne de 4 m (un canapé coincé dans une porte, par exemple).
+- **La maison** : inventée à chaque nuit, d'après une graine que tous les joueurs partagent. Un couloir en travers, une entrée qui donne sur la cour, et de six à onze pièces de tailles inégales, certaines en enfilade. Chaque pièce ouvre sur le couloir ou sur une voisine, souvent les deux : il y a des portes partout, et plus d'un chemin pour fuir. La chose dort dans la pièce la plus loin de l'entrée.
+- **Les pièces** ont chacune leur métier et sont meublées en conséquence : au salon, le canapé dos au mur, la télé en face sur son meuble, la table basse entre les deux sur son tapis, une bibliothèque, un piano si la place y est ; dans les chambres, le lit la tête au mur, ses tables de nuit, une lampe dessus, l'armoire, la commode et sa boîte à bijoux ; à la salle à manger, la table et ses chaises, le buffet ; à la cuisine, le plan de travail, la cuisinière, le frigo ; au bureau, le bureau, son ordinateur, ses bibliothèques ; à la salle de bain, la baignoire, le lavabo, la machine à laver. Les tableaux et les miroirs sont accrochés aux murs, et y tiennent tant qu'on ne les prend pas. De 70 à 130 objets à emporter, de 35 sortes ; la baignoire, le lavabo, le plan de travail et les tapis tiennent à la maison.
+- **Le quota** : 25 % de la valeur de la maison pour un porteur seul, 6 % de plus par porteur, 60 % au plus. Ce qui compte est ce qui est **posé** dans la zone jaune, à sa valeur du moment.
+- **Les bras** sont élastiques. Les deux mains s'accrochent à ce qu'on prend, une de chaque côté, et le meuble tourne avec son porteur. Quand on s'éloigne de ce qu'on tient (un canapé coincé dans une porte, un meuble trop lourd qu'on traîne), les bras s'étirent, s'affinent et rougissent ; passé 2,1 m, ils rappellent leur porteur en arrière. À 3,3 m, **un bras s'arrache** : il reste pendu au meuble, et l'on tient encore de l'autre, deux fois moins fort. S'il s'arrache aussi, tout tombe. Un bras repousse en 8 secondes ; sans bras, on ne prend rien.
+- **Porter** : chaque porteur donne une force limitée, la moitié par bras. Seul, à deux bras, on soulève jusqu'à 45 kg ; à deux, 90 ; à trois, 135. Ce qui pèse plus se traîne. Ce qu'on porte ralentit.
 - **La casse** : un choc coûte à un meuble une part de sa valeur, selon sa fragilité. Un vase perd presque tout, un canapé presque rien.
 - **Le bruit** : les pas, la course, les cris, les chocs et le **vrai micro** du joueur ont une portée en mètres. La jauge en bas à gauche la montre.
 - **La chose** : elle dort une minute, puis rôde. Elle va voir tout bruit qui porte jusqu'à elle. Elle ne tue pas d'office, et on a de quoi lui échapper :
@@ -71,9 +74,10 @@ Tous les réglages sont dans `scripts/regles.gd`.
 | --- | --- |
 | `scripts/regles.gd` | tous les nombres du jeu, et le catalogue des meubles |
 | `scripts/principal.gd` | le menu, le réseau, la partie : ce que l'hôte décide et redit aux autres |
-| `scripts/maison.gd` | le plan en lettres d'où sortent les murs, les portes, les lampes, la cour, le camion, et la grille où marche la chose |
-| `scripts/objet.gd` | un meuble : son dessin, le portage, la casse |
-| `scripts/joueur.gd` | un porteur, vivant ou mort |
+| `scripts/maison.gd` | la maison : l'invention de son plan, d'où sortent les murs, les portes, les sols, les lampes, la cour, le camion, et la grille où marche la chose |
+| `scripts/amenagement.gd` | meubler chaque pièce selon son métier |
+| `scripts/objet.gd` | un objet : son dessin, les mains qui le tiennent, le portage, la casse |
+| `scripts/joueur.gd` | un porteur, vivant ou mort, et ses bras |
 | `scripts/creature.gd` | la chose : entendre, voir, chasser |
 | `scripts/chat.gd` | les votes, les spectateurs de paille, la lecture du chat de Twitch |
 | `scripts/micro.gd` | le niveau du micro (rien n'est enregistré ni envoyé) |
@@ -127,11 +131,11 @@ node outils/essai-pwa.js site
 
 À chaque envoi sur `main`, GitHub refait tout cela (`.github/workflows/site.yml`) : la syntaxe, le banc, les trois essais sans écran, la construction, l'essai de l'application, puis la publication sur GitHub Pages.
 
-`--essai` joue toujours la même maison (la graine 7) ; `--essai --graine=12` en essaie une autre.
+`--essai` vérifie d'abord douze maisons inventées, puis joue la maison d'essai, toujours la même (une graine négative).
 
 ## Où en est le prototype
 
-- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (67 vérifications seul, 15 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
+- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (88 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
 - **Vérifié dans Chromium, l'application installable** : l'essai passe (11 vérifications) : le manifeste et ses icônes, le service worker qui s'installe et garde le jeu entier, le jeu relancé et joué seul réseau coupé.
 - **Vérifié dans Chromium** (WebGL 2, un téléphone émulé de 844 sur 390, de vrais touchers) : l'export web se charge, le menu passe au doigt, une partie commence, le joystick fait marcher jusque dans le salon, le pouce droit tourne le regard pendant qu'on marche, « Courir » reste enfoncé, « Torche » éteint la lampe. Deux pouces à la fois : le gauche tenant le joystick, le droit glisse et revient sans que la vue saute, puis glisse et la vue tourne.
 - **Vérifié dans trois Chromium à la fois** : l'essai en ligne passe (28 vérifications). Et les fonctions du salon, dans un Postgres local : les codes, six porteurs au plus, la nuit commencée fermée aux nouveaux, le ménage des vieux salons, tout refusé sans compte.

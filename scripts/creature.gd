@@ -33,7 +33,7 @@ var _yeux: Array = []
 func preparer(p) -> void:
 	principal = p
 	maison = p.maison
-	position = maison.TANIERE
+	position = maison.taniere
 	cible_pos = position
 	var noir := StandardMaterial3D.new()
 	noir.albedo_color = Color(0.035, 0.035, 0.05)
@@ -193,12 +193,12 @@ func _roder(attente: float) -> void:
 func rentrer() -> void:
 	_roder(3.0)
 	_repue = R.CHOSE_REPUE
-	_aller(maison.TANIERE)
+	_aller(maison.taniere)
 
 
 # elle ne sort pas de la maison : ce qui l'appelle dehors l'amène au seuil, pas plus loin
 func _aller(ou: Vector3) -> void:
-	route = maison.chemin(global_position, ou if maison.dedans(ou) else maison.SEUIL)
+	route = maison.chemin(global_position, ou if maison.dedans(ou) else maison.seuil)
 	_i = 1 if route.size() > 1 else 0     # la première case est celle où elle est
 
 

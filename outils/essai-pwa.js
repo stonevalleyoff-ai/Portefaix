@@ -71,8 +71,8 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   await p.reload();
   verif(await attendre(e => e.etat === 'menu' && e.reperes.sans_compte) && servis === avant, 'réseau coupé, le jeu se relance quand même, sans rien demander au serveur');
   await cliquer('sans_compte'); await cliquer('seul');
-  const partie = await attendre(e => e.etat === 'partie' && e.meubles === 23, 30000);
-  verif(partie && partie.quota > 0, 'et l\'on joue seul : la nuit commence, vingt-trois meubles');
+  const partie = await attendre(e => e.etat === 'partie' && e.meubles >= 40, 30000);
+  verif(partie && partie.quota > 0 && partie.pieces >= 6, `et l'on joue seul : la nuit commence, dans une maison de ${partie && partie.pieces} pièces et ${partie && partie.meubles} objets`);
   await ctx.setOffline(false);
   verif(!erreurs.length, 'aucune erreur dans la page' + (erreurs.length ? ' ; ' + erreurs.slice(0, 3).join(' | ') : ''));
 

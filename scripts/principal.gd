@@ -16,6 +16,7 @@ const Interface = preload("res://scripts/interface.gd")
 const Tactile = preload("res://scripts/tactile.gd")
 const Compte = preload("res://scripts/compte.gd")
 const Salon = preload("res://scripts/salon.gd")
+const Amenagement = preload("res://scripts/amenagement.gd")
 const Essai = preload("res://scripts/essai.gd")
 
 enum { MENU, SALON, PARTIE, FIN }
@@ -47,8 +48,9 @@ var total := 0
 var quota := 0
 var charge := 0
 var gagne := false
-var graine := -1                # la graine de la maison ; négative, le hasard la choisit
+var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
 var repit: float = R.REPIT       # la chose dort jusque-là (l'essai le repousse)
+var bras := {}                    # chez l'hôte : le porteur → ce qu'il reste à ses deux bras pour repousser
 var blessures := {}               # chez l'hôte : le porteur blessé → le temps qu'il lui reste à guérir
 var effets := {}                  # les sabotages en cours : nom → {reste, param}
 var _vote := {"ouvert": false, "options": [], "voix": [0, 0, 0], "reste": 0.0}
@@ -308,7 +310,7 @@ func lancer() -> void:
 	for id in ids:
 		pseudos.append(str(noms.get(id, "Porteur")))
 	chat.chaine = "" if hors_ligne else ui.chaine()
-	commencer.rpc(graine if graine >= 0 else int(hasard.randi()), ids, pseudos)
+	commencer.rpc(graine if graine != -1 else int(hasard.randi()), ids, pseudos)
 
 
 func retour_menu(avis: String = "") -> void:
@@ -332,6 +334,7 @@ func _vider() -> void:
 	objets.clear()
 	effets.clear()
 	blessures.clear()
+	bras.clear()
 	_poussees.clear()
 
 
@@ -349,7 +352,7 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	maison = Maison.new()
 	maison.name = "Maison"
 	monde.add_child(maison)
-	maison.construire()
+	maison.construire(graine)
 	_meubler(graine)
 	for k in ids.size():
 		ajouter_joueur(int(ids[k]), maison.depart(k), k, Compte.propre(str(pseudos[k])) if k < pseudos.size() else "Porteur")
@@ -389,43 +392,29 @@ func _ambiance() -> void:
 	monde.add_child(w)
 
 
-# les meubles : la même graine donne à tous les mêmes meubles aux mêmes endroits
+# les meubles : la même graine donne à tous les mêmes meubles aux mêmes endroits (scripts/amenagement.gd)
 func _meubler(graine: int) -> void:
-	var r := RandomNumberGenerator.new()
-	r.seed = graine
-	var poses: Array = []
+	var h := RandomNumberGenerator.new()
+	h.seed = absi(graine) + 1
+	var a := Amenagement.new()
+	a.amenager(maison, h)
+	for d in a.decors:
+		maison.ajouter_decor(d)
 	total = 0
-	for k in R.MOBILIER.size():
-		var t: String = R.MOBILIER[k]
-		var taille: Vector3 = R.CATALOGUE[t].taille
-		var demi: float = maxf(taille.x, taille.z) * 0.5
-		for tentative in 80:
-			var piece: Rect2i = maison.PIECES[(k + tentative / 16) % maison.PIECES.size()].rect
-			var p := Vector2(r.randf_range(piece.position.x + demi + 0.25, piece.end.x - demi - 0.25),
-				r.randf_range(piece.position.y + demi + 0.25, piece.end.y - demi - 0.25))
-			var quart := r.randi_range(0, 3)
-			if maison.pres_d_une_porte(p, demi + 1.4):
-				continue
-			var libre := true
-			for q in poses:
-				if q[0].distance_to(p) < q[1] + demi + 0.15:
-					libre = false
-					break
-			if not libre:
-				continue
-			poses.append([p, demi])
-			var o := Objet.new()
-			o.preparer(self, objets.size(), t)
-			o.position = Vector3(p.x, taille.y * 0.5 + 0.03, p.y)
-			o.rotation.y = quart * PI * 0.5
-			o.cible_pos = o.position
-			o.cible_rot = Quaternion(Vector3.UP, o.rotation.y)
-			monde.add_child(o)
-			if serveur:
-				o.choc.connect(_sur_choc)
-			objets[o.id] = o
-			total += o.valeur
-			break
+	for d in a.objets:
+		var o := Objet.new()
+		o.preparer(self, objets.size(), d.type)
+		o.position = d.pos
+		o.rotation.y = d.yaw
+		o.cible_pos = o.position
+		o.cible_rot = Quaternion(Vector3.UP, d.yaw)
+		if d.accroche:
+			o.accrocher()
+		monde.add_child(o)
+		if serveur:
+			o.choc.connect(_sur_choc)
+		objets[o.id] = o
+		total += o.valeur
 
 
 func ajouter_joueur(id: int, ou: Vector3, rang: int, pseudo: String = "Porteur"):
@@ -476,18 +465,56 @@ func prendre(qui: int, ido: int) -> void:
 		return
 	if j.tete.global_position.distance_to(o.global_position) > R.PORTEE + o.taille.length() * 0.5:
 		return
-	objet_info.rpc(ido, o.valeur, o.porteurs + [qui])
+	# il le prend avec les bras qu'il a : deux, ou un seul si l'autre repousse
+	var attente: Array = bras.get(qui, [0.0, 0.0])
+	var libres: Array = []
+	for cote in 2:
+		if attente[cote] <= 0.0:
+			libres.append(cote)
+	if libres.is_empty():
+		_dire_a(qui, "Tes bras repoussent encore.")
+		return
+	objet_info.rpc(ido, o.valeur, o.prises + o.accroches(j, libres))
 
 
 func lacher(qui: int, ido: int, lance: bool) -> void:
 	var o = objets.get(ido)
 	if o == null or not o.porteurs.has(qui):
 		return
-	var reste: Array = o.porteurs.duplicate()
-	reste.erase(qui)
+	var reste: Array = o.prises.filter(func(p): return p[0] != qui)
 	objet_info.rpc(ido, o.valeur, reste)
 	if lance and reste.is_empty() and joueurs.has(qui):
 		o.apply_central_impulse(joueurs[qui].vise() * minf(o.mass * R.LANCER, R.LANCER_MAX))
+
+
+# un bras trop tendu s'arrache : il lâche, reste un moment pendu au meuble, et repousse
+func arracher(qui: int, cote: int, ido: int) -> void:
+	var o = objets.get(ido)
+	if o == null:
+		return
+	var reste: Array = []
+	var point := Vector3.ZERO
+	var tenait := false
+	for p in o.prises:
+		if p[0] == qui and p[1] == cote:
+			point = p[2]
+			tenait = true
+		else:
+			reste.append(p)
+	if not tenait:
+		return
+	var attente: Array = bras.get(qui, [0.0, 0.0]).duplicate()
+	attente[cote] = R.BRAS_REPOUSSE
+	bras[qui] = attente
+	bras_arrache.rpc(qui, cote, ido, point)
+	objet_info.rpc(ido, o.valeur, reste)
+
+
+func _dire_a(qui: int, t: String) -> void:
+	if qui == mon_id:
+		ui.annoncer(t)
+	elif en_reseau:
+		annonce.rpc_id(qui, t)
 
 
 # un mort pousse un petit objet : pour aider, ou pas
@@ -508,7 +535,7 @@ func klaxonner(qui: int) -> void:
 	var j = joueurs[qui]
 	if not j.vivant:
 		return
-	var ou := Vector3(maison.CAMION.get_center().x, 1.5, maison.CAMION.get_center().y)
+	var ou := Vector3(maison.camion.get_center().x, 1.5, maison.camion.get_center().y)
 	son_a.rpc("klaxon", ou, 4.0)
 	chose.entendre(ou, R.BRUIT_KLAXON)
 	if charge >= quota:
@@ -552,17 +579,30 @@ func finir(victoire: bool, raison: String) -> void:
 # --- ce que l'hôte redit à tous ---
 
 @rpc("authority", "call_local", "reliable")
-func objet_info(ido: int, valeur: int, porteurs: Array) -> void:
+func objet_info(ido: int, valeur: int, prises: Array) -> void:
 	var o = objets.get(ido)
 	if o == null:
 		return
 	o.valeur = valeur
-	o.definir_porteurs(porteurs)
+	o.definir_prises(prises)
 	for j in joueurs.values():
-		if porteurs.has(j.id):
+		if o.porteurs.has(j.id):
 			j.porte = ido
 		elif j.porte == ido:
 			j.porte = -1
+
+
+@rpc("authority", "call_local", "reliable")
+func bras_arrache(qui: int, cote: int, ido: int, point: Vector3) -> void:
+	var j = joueurs.get(qui)
+	var o = objets.get(ido)
+	if j == null or o == null or cote < 0 or cote > 1:
+		return
+	j.repousse[cote] = R.BRAS_REPOUSSE
+	o.laisser_bras(point, j.couleur)
+	sons.jouer_a("arrache", o.global_position, 6.0)
+	if qui == mon_id:
+		ui.annoncer("Un bras arraché ! Il repousse.", 3.0)
 
 
 @rpc("authority", "call_remote", "unreliable")
@@ -682,6 +722,8 @@ func _effet(nom: String, actif: bool, param: int) -> void:
 		"plume":
 			if serveur:
 				for o in objets.values():
+					if o.accroche:
+						continue
 					o.gravity_scale = 0.08 if actif else 1.0
 					o.sleeping = false
 					if actif:
@@ -729,7 +771,7 @@ func _sur_choc(o, dv: float) -> void:
 	var avant: int = o.valeur
 	o.valeur = maxi(o.valeur - perte, 0)
 	if o.valeur != avant:
-		objet_info.rpc(o.id, o.valeur, o.porteurs)
+		objet_info.rpc(o.id, o.valeur, o.prises)
 	chose.entendre(o.global_position, clampf(3.0 + dv * sqrt(o.mass) * 0.55, 3.0, 22.0))
 	son_a.rpc("casse" if o.valeur != avant and o.fragile > 0.5 else "choc", o.global_position, clampf(dv * 2.0 - 12.0, -12.0, 6.0))
 
@@ -752,6 +794,8 @@ func _physics_process(dt: float) -> void:
 		chose.reveiller()
 		annonce.rpc("Quelque chose s'est réveillé dans la maison. Elle ne sort pas dans la cour.")
 	chose.avancer(dt)
+	for qui in bras:
+		bras[qui] = [maxf(bras[qui][0] - dt, 0.0), maxf(bras[qui][1] - dt, 0.0)]
 	for qui in blessures.keys():
 		blessures[qui] -= dt
 		if blessures[qui] <= 0.0:
@@ -807,7 +851,7 @@ func _envoyer_objets() -> void:
 	var tous := _tour % 20 == 0
 	var d := PackedFloat32Array()
 	for o in objets.values():
-		if tous or not o.sleeping:
+		if tous or not (o.sleeping or o.freeze):
 			var p: Vector3 = o.global_position
 			var q: Quaternion = o.quaternion
 			d.append_array(PackedFloat32Array([o.id, p.x, p.y, p.z, q.x, q.y, q.z, q.w]))
@@ -828,7 +872,8 @@ func _temoigner(dt: float) -> void:
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
 		"refus": ui._connexion_avis.text, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
-		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "quota": quota, "reperes": ui.reperes()}
+		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0,
+		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	JavaScriptBridge.eval("window.portefaix=" + JSON.stringify(t) + ";", true)
 
 
@@ -854,8 +899,10 @@ func _process(dt: float) -> void:
 func _indice() -> String:
 	if moi.porte >= 0:
 		var tenu = objets.get(moi.porte)
-		if tenu != null and tenu.lourd() and tenu.porteurs.size() * R.FORCE_PORTEUR < tenu.mass * 9.8:
-			return "%s : trop lourd pour %d, il se traîne · E : lâcher" % [tenu.nom, tenu.porteurs.size()]
+		if tenu != null and tenu.prises.size() * R.FORCE_PORTEUR * 0.5 < tenu.mass * 9.8:
+			return "%s : trop lourd pour %d bras, il se traîne · E : lâcher" % [tenu.nom, tenu.prises.size()]
+		if moi.bras_libres() < 2:
+			return "D'un seul bras · E : poser · clic droit : lancer"
 		return "E : poser · clic droit : lancer"
 	var vu = moi.regard()
 	if vu == null:

@@ -81,10 +81,11 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
 
   console.log('3. La nuit, à trois');
   await ada.cliquer('commencer');
-  for (const j of tous) verif(await j.attendre('la partie', e => e.etat === 'partie' && Object.keys(e.joueurs).length === 3 && e.meubles === 23),
-    `${j.nom} : la nuit commence, trois porteurs, vingt-trois meubles`);
+  for (const j of tous) verif(await j.attendre('la partie', e => e.etat === 'partie' && Object.keys(e.joueurs).length === 3 && e.meubles >= 40 && e.pieces >= 6),
+    `${j.nom} : la nuit commence, trois porteurs, une maison meublée`);
   const [ea, eb, ec] = await Promise.all(tous.map(j => j.etat()));
-  verif(ea.quota === eb.quota && eb.quota === ec.quota && ea.quota > 0, `le même quota chez tous (${ea.quota} €)`);
+  verif(ea.quota === eb.quota && eb.quota === ec.quota && ea.quota > 0 && ea.meubles === eb.meubles && eb.meubles === ec.meubles && ea.pieces === ec.pieces,
+    `la même maison chez tous : ${ea.pieces} pièces, ${ea.meubles} objets, le même quota (${ea.quota} €)`);
   verif(['1', '2', '3'].every(i => ea.pseudos[i] === eb.pseudos[i] && eb.pseudos[i] === ec.pseudos[i]) && ea.pseudos['1'] === 'Ada' && ea.pseudos['2'] === 'Bob', 'les mêmes pseudos sur les mêmes porteurs');
   verif(service.salons.get(code).etat === 'parti', 'le salon est fermé aux nouveaux venus');
   // bob avance : les deux autres le voient bouger

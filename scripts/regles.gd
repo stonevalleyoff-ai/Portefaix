@@ -31,7 +31,6 @@ const FORCE_PORTEUR := 450.0
 const PORT_RAIDEUR := 7.0
 const PORT_VITESSE := 5.0
 const PORT_GAIN := 10.0
-const PORT_RUPTURE := 4.0     # plus loin que ça de la main, l'objet échappe
 const LANCER := 7.0           # la vitesse donnée à un objet lancé…
 const LANCER_MAX := 70.0      # … tant que l'élan ne dépasse pas ça (les lourds tombent aux pieds)
 const FREIN := 45.0           # les kilos portés qui divisent la marche par deux
@@ -79,28 +78,56 @@ const SABOTAGES := {
 }
 
 # le quota : la part de la maison à charger, selon le nombre de porteurs
-const QUOTA := 0.3
+const QUOTA := 0.25
 const QUOTA_PAR_JOUEUR := 0.06
 const QUOTA_MAX := 0.6
 
-# le mobilier : taille (m), masse (kg), valeur (€), fragile (la part de la valeur qu'un grand choc emporte)
+# les bras : élastiques. Ils s'accrochent à ce qu'on prend, s'étirent, et s'arrachent si l'on tire trop ; puis ils repoussent.
+const BRAS_TENDU := 2.1       # au-delà, le bras rougit, et rappelle son porteur vers ce qu'il tient
+const BRAS_MAX := 3.3         # au-delà, il s'arrache
+const BRAS_REPOUSSE := 8.0    # le temps qu'il met à repousser
+const BRAS_RAPPEL := 9.0      # la force du rappel (m/s² par mètre de trop)
+const BRAS_ECART := 0.24      # de combien les deux mains s'écartent sur ce qu'elles tiennent
+
+# le mobilier : taille (m ; x le long du mur, y la hauteur, z la profondeur, le devant vers +z), masse (kg), valeur (€),
+# fragile (la part de la valeur qu'un grand choc emporte)
 const CATALOGUE := {
 	"carton": {"nom": "un carton", "taille": Vector3(0.5, 0.4, 0.5), "masse": 5.0, "valeur": 40, "fragile": 0.2, "couleur": Color(0.6, 0.46, 0.28)},
+	"panier": {"nom": "un panier à linge", "taille": Vector3(0.42, 0.5, 0.42), "masse": 2.0, "valeur": 20, "fragile": 0.0, "couleur": Color(0.72, 0.62, 0.42)},
+	"coussin": {"nom": "un coussin", "taille": Vector3(0.42, 0.14, 0.42), "masse": 0.5, "valeur": 15, "fragile": 0.0, "couleur": Color(0.7, 0.35, 0.3)},
 	"chaise": {"nom": "une chaise", "taille": Vector3(0.45, 0.9, 0.45), "masse": 6.0, "valeur": 60, "fragile": 0.3, "couleur": Color(0.45, 0.3, 0.18)},
 	"lampe": {"nom": "un lampadaire", "taille": Vector3(0.35, 1.5, 0.35), "masse": 4.0, "valeur": 90, "fragile": 0.7, "couleur": Color(0.75, 0.7, 0.55)},
+	"lampe_chevet": {"nom": "une lampe de chevet", "taille": Vector3(0.22, 0.38, 0.22), "masse": 1.5, "valeur": 45, "fragile": 0.8, "couleur": Color(0.8, 0.72, 0.5)},
+	"reveil": {"nom": "un réveil", "taille": Vector3(0.14, 0.1, 0.08), "masse": 0.3, "valeur": 25, "fragile": 0.6, "couleur": Color(0.75, 0.2, 0.18)},
 	"vase": {"nom": "un vase", "taille": Vector3(0.3, 0.5, 0.3), "masse": 2.0, "valeur": 150, "fragile": 0.95, "couleur": Color(0.55, 0.7, 0.85)},
+	"plante": {"nom": "une plante verte", "taille": Vector3(0.4, 1.1, 0.4), "masse": 7.0, "valeur": 55, "fragile": 0.7, "couleur": Color(0.2, 0.45, 0.22)},
 	"tableau": {"nom": "un tableau", "taille": Vector3(0.9, 0.7, 0.12), "masse": 4.0, "valeur": 220, "fragile": 0.6, "couleur": Color(0.7, 0.55, 0.2)},
-	"table": {"nom": "une table", "taille": Vector3(1.4, 0.75, 0.8), "masse": 35.0, "valeur": 180, "fragile": 0.25, "couleur": Color(0.4, 0.27, 0.16)},
-	"fauteuil": {"nom": "un fauteuil", "taille": Vector3(0.9, 0.9, 0.85), "masse": 25.0, "valeur": 200, "fragile": 0.15, "couleur": Color(0.5, 0.2, 0.2)},
+	"miroir": {"nom": "un miroir", "taille": Vector3(0.6, 0.9, 0.08), "masse": 6.0, "valeur": 160, "fragile": 0.95, "couleur": Color(0.55, 0.45, 0.25)},
+	"boite_bijoux": {"nom": "une boîte à bijoux", "taille": Vector3(0.24, 0.14, 0.18), "masse": 1.0, "valeur": 420, "fragile": 0.3, "couleur": Color(0.4, 0.12, 0.16)},
+	"ordinateur": {"nom": "un ordinateur", "taille": Vector3(0.5, 0.42, 0.2), "masse": 5.0, "valeur": 480, "fragile": 0.85, "couleur": Color(0.12, 0.12, 0.14)},
 	"tele": {"nom": "une télé", "taille": Vector3(1.0, 0.65, 0.25), "masse": 10.0, "valeur": 320, "fragile": 0.85, "couleur": Color(0.08, 0.08, 0.1)},
+	"micro_ondes": {"nom": "un micro-ondes", "taille": Vector3(0.48, 0.3, 0.36), "masse": 11.0, "valeur": 110, "fragile": 0.6, "couleur": Color(0.82, 0.82, 0.8)},
+	"grille_pain": {"nom": "un grille-pain", "taille": Vector3(0.28, 0.2, 0.18), "masse": 1.5, "valeur": 30, "fragile": 0.4, "couleur": Color(0.7, 0.7, 0.72)},
+	"casserole": {"nom": "une casserole", "taille": Vector3(0.26, 0.14, 0.26), "masse": 1.2, "valeur": 25, "fragile": 0.1, "couleur": Color(0.5, 0.5, 0.52)},
+	"assiettes": {"nom": "une pile d'assiettes", "taille": Vector3(0.26, 0.14, 0.26), "masse": 2.5, "valeur": 70, "fragile": 1.0, "couleur": Color(0.92, 0.9, 0.84)},
+	"table_nuit": {"nom": "une table de nuit", "taille": Vector3(0.45, 0.5, 0.4), "masse": 9.0, "valeur": 60, "fragile": 0.3, "couleur": Color(0.42, 0.28, 0.17)},
+	"table_basse": {"nom": "une table basse", "taille": Vector3(1.0, 0.4, 0.55), "masse": 14.0, "valeur": 90, "fragile": 0.3, "couleur": Color(0.36, 0.24, 0.15)},
+	"meuble_tele": {"nom": "un meuble télé", "taille": Vector3(1.4, 0.5, 0.45), "masse": 28.0, "valeur": 140, "fragile": 0.2, "couleur": Color(0.3, 0.2, 0.13)},
+	"table": {"nom": "une table", "taille": Vector3(1.4, 0.75, 0.8), "masse": 35.0, "valeur": 180, "fragile": 0.25, "couleur": Color(0.4, 0.27, 0.16)},
+	"bureau": {"nom": "un bureau", "taille": Vector3(1.3, 0.76, 0.65), "masse": 32.0, "valeur": 210, "fragile": 0.25, "couleur": Color(0.33, 0.22, 0.14)},
+	"fauteuil": {"nom": "un fauteuil", "taille": Vector3(0.9, 0.9, 0.85), "masse": 25.0, "valeur": 200, "fragile": 0.15, "couleur": Color(0.5, 0.2, 0.2)},
+	"commode": {"nom": "une commode", "taille": Vector3(1.0, 0.85, 0.48), "masse": 38.0, "valeur": 230, "fragile": 0.25, "couleur": Color(0.38, 0.25, 0.15)},
 	"horloge": {"nom": "une horloge comtoise", "taille": Vector3(0.5, 2.0, 0.4), "masse": 40.0, "valeur": 450, "fragile": 0.6, "couleur": Color(0.35, 0.22, 0.12)},
+	"buffet": {"nom": "un buffet", "taille": Vector3(1.5, 0.95, 0.5), "masse": 50.0, "valeur": 320, "fragile": 0.3, "couleur": Color(0.34, 0.21, 0.12)},
+	"cuisiniere": {"nom": "une cuisinière", "taille": Vector3(0.6, 0.9, 0.62), "masse": 50.0, "valeur": 280, "fragile": 0.3, "couleur": Color(0.85, 0.85, 0.83)},
+	"bibliotheque": {"nom": "une bibliothèque", "taille": Vector3(1.0, 1.9, 0.35), "masse": 55.0, "valeur": 260, "fragile": 0.3, "couleur": Color(0.36, 0.23, 0.13)},
 	"canape": {"nom": "un canapé", "taille": Vector3(2.0, 0.85, 0.9), "masse": 60.0, "valeur": 400, "fragile": 0.15, "couleur": Color(0.25, 0.38, 0.35)},
+	"lit": {"nom": "un lit", "taille": Vector3(1.5, 0.55, 2.0), "masse": 65.0, "valeur": 380, "fragile": 0.1, "couleur": Color(0.4, 0.27, 0.17)},
+	"machine_laver": {"nom": "une machine à laver", "taille": Vector3(0.6, 0.86, 0.6), "masse": 68.0, "valeur": 330, "fragile": 0.4, "couleur": Color(0.9, 0.9, 0.88)},
+	"frigo": {"nom": "un frigo", "taille": Vector3(0.7, 1.8, 0.68), "masse": 75.0, "valeur": 420, "fragile": 0.4, "couleur": Color(0.88, 0.89, 0.9)},
 	"armoire": {"nom": "une armoire", "taille": Vector3(1.2, 2.0, 0.6), "masse": 80.0, "valeur": 500, "fragile": 0.3, "couleur": Color(0.3, 0.19, 0.1)},
 	"piano": {"nom": "un piano", "taille": Vector3(1.5, 1.2, 0.65), "masse": 120.0, "valeur": 900, "fragile": 0.5, "couleur": Color(0.06, 0.06, 0.07)},
 }
-# ce qu'il y a dans la maison, à chaque partie (placé au hasard de la graine)
-const MOBILIER := ["piano", "armoire", "canape", "horloge", "table", "fauteuil", "fauteuil", "tele", "tele", "vase", "vase", "vase",
-	"lampe", "lampe", "tableau", "tableau", "chaise", "chaise", "chaise", "chaise", "carton", "carton", "carton"]
 
 
 static func quota(total: int, joueurs: int) -> int:

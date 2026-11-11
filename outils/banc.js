@@ -50,9 +50,9 @@ verif(tables.length === 3 && tables.every(t => sql.includes(`alter table public.
 
 console.log('2. La maison');
 const maison = lire('scripts/maison.gd');
-const plan = [...maison.match(/const PLAN := \[([\s\S]*?)\n\]/)[1].matchAll(/"([#.DP]+)"/g)].map(m => m[1]);
+const plan = [...maison.match(/const PLAN_ESSAI := \[([\s\S]*?)\n\]/)[1].matchAll(/"([#.DP]+)"/g)].map(m => m[1]);
 const L = plan[0].length, H = plan.length, sol = (c, l) => l >= 0 && l < H && c >= 0 && c < L && plan[l][c] !== '#';
-verif(H >= 8 && plan.every(l => l.length === L), `un plan de ${L} sur ${H} cases, rectangulaire`);
+verif(H >= 8 && plan.every(l => l.length === L), `la maison d'essai : un plan de ${L} sur ${H} cases, rectangulaire`);
 const bord = [];
 for (let l = 0; l < H; l++) for (let c = 0; c < L; c++) if ((l === 0 || l === H - 1 || c === 0 || c === L - 1) && plan[l][c] !== '#') bord.push(plan[l][c]);
 verif(bord.length > 0 && bord.every(x => x === 'P') && plan[H - 1].includes('P'), `clos de murs, avec une seule sortie : la porte d'entrée, côté cour (${bord.length} cases)`);
@@ -60,11 +60,14 @@ const vus = new Set(), pile = [[plan[H - 1].indexOf('P'), H - 1]];
 while (pile.length) { const [c, l] = pile.pop(), k = c + ',' + l; if (!sol(c, l) || vus.has(k)) continue; vus.add(k); pile.push([c + 1, l], [c - 1, l], [c, l + 1], [c, l - 1]); }
 const sols = plan.join('').replace(/#/g, '').length;
 verif(vus.size === sols, `les ${sols} cases de sol se rejoignent toutes depuis l'entrée` + (vus.size === sols ? '' : ` ; ${sols - vus.size} sont enfermées`));
-const pieces = [...maison.matchAll(/"rect": Rect2i\((\d+), (\d+), (\d+), (\d+)\)/g)].map(m => m.slice(1).map(Number));
+const pieces = [...maison.matchAll(/\["(\w+)", Rect2i\((\d+), (\d+), (\d+), (\d+)\)\]/g)].map(m => m.slice(2).map(Number));
+const metiers = [...maison.matchAll(/\["(\w+)", Rect2i\(/g)].map(m => m[1]);
 const pleines = pieces.filter(([c, l, w, h]) => { for (let y = l; y < l + h; y++) for (let x = c; x < c + w; x++) if (plan[y]?.[x] !== '.') return false; return true; });
 verif(pieces.length >= 4 && pleines.length === pieces.length, `${pieces.length} pièces à meubler, toutes sur du sol`);
-const lampes = [...maison.match(/const LAMPES := \[([\s\S]*?)\]\n/)[1].matchAll(/Vector2\(([\d.]+), ([\d.]+)\)/g)].map(m => [+m[1], +m[2]]);
-verif(lampes.length >= pieces.length && lampes.every(([x, z]) => sol(Math.floor(x), Math.floor(z))), `${lampes.length} lampes, toutes au-dessus du sol`);
+const amenagement = lire('scripts/amenagement.gd'), sait = [...amenagement.matchAll(/^\t\t\t"(\w+)":\n\t\t\t\t_\w+\(\)/gm)].map(m => m[1]);
+const nommes = [...maison.match(/const NOMS := \{([\s\S]*?)\}/)[1].matchAll(/"(\w+)":/g)].map(m => m[1]), sols_ = [...maison.match(/const SOLS := \{([\s\S]*?)\}/)[1].matchAll(/"(\w+)":/g)].map(m => m[1]);
+const sansMetier = [...new Set([...metiers, ...nommes])].filter(t => !sait.includes(t) || !sols_.includes(t) || !nommes.includes(t));
+verif(sait.length >= 8 && !sansMetier.length, `${sait.length} métiers de pièce (${sait.join(', ')}), chacun avec son nom, son sol et de quoi le meubler` + (sansMetier.length ? ` ; incomplets : ${sansMetier.join(', ')}` : ''));
 verif(plan.join('').includes('DD') && plan.every(l => !/(^|[^D])D([^D]|$)/.test(l)), 'des portes de deux mètres, où passe un canapé');
 
 console.log('3. Les règles');
@@ -72,17 +75,20 @@ const regles = lire('scripts/regles.gd');
 const catalogue = {};
 for (const m of regles.matchAll(/"(\w+)": \{"nom": "[^"]+", "taille": Vector3\(([\d.]+), ([\d.]+), ([\d.]+)\), "masse": ([\d.]+), "valeur": (\d+), "fragile": ([\d.]+)/g))
   catalogue[m[1]] = { taille: [+m[2], +m[3], +m[4]], masse: +m[5], valeur: +m[6], fragile: +m[7] };
-const mobilier = [...regles.match(/const MOBILIER := \[([\s\S]*?)\]/)[1].matchAll(/"(\w+)"/g)].map(m => m[1]);
 const nombre = n => +regles.match(new RegExp(`const ${n} := ([\\d.]+)`))[1];
-const inconnus = mobilier.filter(t => !catalogue[t]);
-verif(mobilier.length >= 15 && !inconnus.length, `${mobilier.length} meubles dans la maison, tous au catalogue (${Object.keys(catalogue).length} sortes)` + (inconnus.length ? ` ; inconnus : ${inconnus.join(', ')}` : ''));
-const haut = nombre('HAUTEUR'), trop = Object.entries(catalogue).filter(([, o]) => o.taille[1] > 2.2 || o.taille[1] >= haut || o.fragile < 0 || o.fragile > 1);
-verif(!trop.length, 'chacun passe sous une porte, debout, et sa fragilité est une part' + (trop.length ? ` ; pas : ${trop.map(x => x[0]).join(', ')}` : ''));
-const force = nombre('FORCE_PORTEUR'), total = mobilier.reduce((s, t) => s + catalogue[t].valeur, 0);
-const seul = mobilier.filter(t => catalogue[t].masse * 9.8 <= force).reduce((s, t) => s + catalogue[t].valeur, 0);
-const quota = n => Math.round(total * Math.min(nombre('QUOTA') + nombre('QUOTA_PAR_JOUEUR') * (n - 1), nombre('QUOTA_MAX')) / 10) * 10;
-verif(seul >= quota(1) * 1.3, `seul, on fait le quota (${quota(1)} € sur ${total}) avec ce qu'on soulève seul (${seul} €), de la casse comprise`);
-verif(quota(6) > seul * 0.75, `à six, il faut aussi sortir les lourds (${quota(6)} €)`);
+// ce que l'aménagement pose : chaque sorte est au catalogue, et a son dessin
+const objet = lire('scripts/objet.gd');
+const poses = [...new Set([...amenagement.matchAll(/_(?:mur|sur|coin|mural|milieu|devant|a_cote|ou_il_reste|poser)\((?:[^"()]*\([^()]*\)[^"()]*|[^"()]*)"(\w+)"/g)].map(m => m[1]).concat([...amenagement.matchAll(/"(\w+)" if h\.randf\(\) < [\d.]+ else "(\w+)"/g)].flatMap(m => [m[1], m[2]])))];
+const inconnus = poses.filter(t => !catalogue[t]), sansDessin = Object.keys(catalogue).filter(t => !new RegExp(`"${t}"[,:]`).test(objet.slice(objet.indexOf('func _pieces'))));
+verif(Object.keys(catalogue).length >= 30 && poses.length >= 25 && !inconnus.length && !sansDessin.length,
+  `${Object.keys(catalogue).length} sortes d'objets au catalogue, ${poses.length} posées par l'aménagement, chacune avec son dessin` + (inconnus.length ? ` ; inconnues : ${inconnus.join(', ')}` : '') + (sansDessin.length ? ` ; sans dessin : ${sansDessin.join(', ')}` : ''));
+const haut = nombre('HAUTEUR'), trop = Object.entries(catalogue).filter(([, o]) => o.taille[1] > 2.2 || o.taille[1] >= haut || o.fragile < 0 || o.fragile > 1 || Math.min(o.taille[0], o.taille[2]) > 1.9);
+verif(!trop.length, 'chacun passe sous une porte et par une porte de deux mètres, et sa fragilité est une part' + (trop.length ? ` ; pas : ${trop.map(x => x[0]).join(', ')}` : ''));
+const force = nombre('FORCE_PORTEUR'), legers = Object.entries(catalogue).filter(([, o]) => o.masse * 9.8 <= force), aUnBras = Object.entries(catalogue).filter(([, o]) => o.masse * 9.8 <= force / 2);
+verif(legers.length >= 15 && legers.length < Object.keys(catalogue).length - 5 && aUnBras.length >= 8,
+  `seul, on soulève ${legers.length} sortes d'objets sur ${Object.keys(catalogue).length} (${aUnBras.length} d'un seul bras) ; le reste se traîne ou se porte à plusieurs`);
+verif(nombre('BRAS_TENDU') > 1.5 && nombre('BRAS_MAX') > nombre('BRAS_TENDU') + 0.5 && nombre('BRAS_MAX') > nombre('PORTEE') && nombre('BRAS_REPOUSSE') >= 3,
+  `les bras : tendus à ${nombre('BRAS_TENDU')} m, arrachés à ${nombre('BRAS_MAX')} m (plus loin qu'on ne prend : ${nombre('PORTEE')} m), repoussés en ${nombre('BRAS_REPOUSSE')} s`);
 const sabotages = [...regles.match(/const SABOTAGES := \{([\s\S]*?)\n\}/)[1].matchAll(/"(\w+)": \{"nom"/g)].map(m => m[1]);
 const principal = lire('scripts/principal.gd');
 verif(sabotages.length >= 3 && sabotages.every(s => principal.includes(`"${s}"`)), `${sabotages.length} sabotages pour le chat, chacun joué par le jeu (${sabotages.join(', ')})`);

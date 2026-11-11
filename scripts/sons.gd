@@ -26,6 +26,7 @@ func _ready() -> void:
 	_brefs["mort"] = _wav(_chute(0.9))
 	_brefs["cri"] = _wav(_chute(0.3, 520.0, 760.0))
 	_brefs["hurle"] = _wav(_chute(1.1, 150.0, 430.0))
+	_brefs["arrache"] = _wav(_chute(0.22, 900.0, 140.0))
 	_brefs["coeur"] = _wav(_battement())
 	_boucles["grogne"] = _wav(_grognement(2.0), true)
 	_boucles["bourdon"] = _wav(_nappe(4.0), true)
