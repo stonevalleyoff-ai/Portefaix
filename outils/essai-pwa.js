@@ -28,6 +28,8 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   const ctx = await nav.newContext({ viewport: { width: 640, height: 360 } }), p = await ctx.newPage();
   const erreurs = [];
   p.on('pageerror', e => erreurs.push(e.message));
+  const console_ = [];
+  p.on('console', x => { console_.push(`${x.type()}: ${x.text()}`.slice(0, 300)); });
   const etat = () => p.evaluate(() => window.portefaix || null).catch(() => null);
   const attendre = async (test, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const e = await etat(); if (e && test(e)) return e; await p.waitForTimeout(250); } return null; };
   const cliquer = async r => { const e = await attendre(x => x.reperes[r]); if (!e) throw new Error(`pas de « ${r} » à l'écran`); await p.mouse.click(e.reperes[r][0], e.reperes[r][1]); await p.waitForTimeout(200); };
@@ -46,7 +48,15 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
     && !!document.querySelector('meta[name="apple-mobile-web-app-capable"]')), 'la page a ce qu\'il faut à un téléphone pour l\'ajouter à l\'écran d\'accueil');
 
   console.log('2. Le service worker');
-  verif(await attendre(e => e.etat === 'menu' && e.reperes.sans_compte), 'le jeu se charge, sur sa page de connexion');
+  const charge = await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);
+  verif(charge, 'le jeu se charge, sur sa page de connexion');
+  if (!charge) {       // sans le jeu, le reste ne dit rien : on dit ce que la page a vu, et on s'arrête là
+    const webgl = await p.evaluate(() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch (e) { return String(e); } }).catch(e => String(e));
+    console.log(`    WebGL 2 dans ce navigateur : ${webgl}`);
+    for (const l of [...erreurs.map(e => 'erreur: ' + e), ...console_].slice(-15)) console.log('    ' + l);
+    console.log(`\nÉCHEC : ${n} vérifications (le jeu ne s'est pas lancé dans ce navigateur)`);
+    await nav.close(); serveur.close(); process.exit(1);
+  }
   const sw = await p.evaluate(async () => { const r = await Promise.race([navigator.serviceWorker.ready, new Promise(f => setTimeout(() => f(null), 30000))]);
     return r && r.active ? { portee: r.scope, etat: r.active.state } : null; });
   verif(sw && sw.portee.endsWith('/Portefaix/') && ['activated', 'activating'].includes(sw.etat), 'le service worker s\'installe, pour le dossier du jeu');
