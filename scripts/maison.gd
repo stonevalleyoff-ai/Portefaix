@@ -32,10 +32,15 @@ const PIECES_ESSAI := [
 	["chambre", Rect2i(1, 1, 7, 5)], ["salon", Rect2i(9, 1, 9, 5)], ["bureau", Rect2i(19, 1, 7, 5)],
 	["cuisine", Rect2i(1, 10, 7, 5)], ["manger", Rect2i(16, 10, 10, 5)], ["entree", Rect2i(9, 10, 6, 5)], ["couloir", Rect2i(1, 7, 25, 2)],
 ]
-const NOMS := {"salon": "le salon", "manger": "la salle à manger", "cuisine": "la cuisine", "chambre": "une chambre", "bureau": "le bureau",
+# la lampe d'une pièce bonus : sa couleur, sa force (les autres ont la lampe de tout le monde)
+const LUEURS := {"cave": [Color(1.0, 0.18, 0.1), 0.9], "arcade": [Color(0.7, 0.3, 1.0), 1.5], "tresor": [Color(1.0, 0.9, 0.6), 2.0], "trone": [Color(1.0, 0.85, 0.5), 2.0],
+	"nains": [Color(0.6, 1.0, 0.6), 1.1]}
+const NOMS := {"cave": "la cave au rituel", "garage": "le garage", "tresor": "la chambre forte", "arcade": "la salle d'arcade",
+	"nains": "le cercle des nains", "trone": "la salle du trône", "salon": "le salon", "manger": "la salle à manger", "cuisine": "la cuisine", "chambre": "une chambre", "bureau": "le bureau",
 	"bain": "la salle de bain", "debarras": "le débarras", "entree": "l'entrée", "couloir": "le couloir"}
 # le sol de chaque métier : du parquet, du carrelage
-const SOLS := {"salon": Color(0.36, 0.25, 0.16), "manger": Color(0.38, 0.27, 0.17), "chambre": Color(0.4, 0.3, 0.2), "bureau": Color(0.3, 0.21, 0.14),
+const SOLS := {"cave": Color(0.15, 0.14, 0.15), "garage": Color(0.4, 0.4, 0.41), "tresor": Color(0.2, 0.22, 0.28), "arcade": Color(0.2, 0.1, 0.3),
+	"nains": Color(0.16, 0.4, 0.16), "trone": Color(0.45, 0.07, 0.1), "salon": Color(0.36, 0.25, 0.16), "manger": Color(0.38, 0.27, 0.17), "chambre": Color(0.4, 0.3, 0.2), "bureau": Color(0.3, 0.21, 0.14),
 	"cuisine": Color(0.5, 0.5, 0.46), "bain": Color(0.45, 0.52, 0.55), "debarras": Color(0.3, 0.29, 0.27), "entree": Color(0.3, 0.22, 0.15),
 	"couloir": Color(0.28, 0.2, 0.14)}
 const COUR := 12                  # les lignes de cour devant la maison, clôturées
@@ -43,6 +48,8 @@ const PORTE_HAUT := 2.2
 
 var plan: Array = []              # les lignes du plan
 var pieces: Array = []            # {type, nom, rect: Rect2i} ; le couloir et l'entrée en sont
+var bonus: Array = []             # les pièces bonus de cette maison (leur type) ; vide, c'est une maison ordinaire
+var bonus_voulu: Array = []       # pour les essais : ces pièces bonus-là, sans tirer au sort
 var largeur := 0
 var profondeur := 0
 var porte_x := 12.0               # le milieu de la porte d'entrée
@@ -66,6 +73,7 @@ func construire(graine: int) -> void:
 			plan.append(l)
 		for p in PIECES_ESSAI:
 			pieces.append({"type": p[0], "nom": NOMS[p[0]], "rect": p[1]})
+		_primer(bonus_voulu)
 	else:
 		_inventer(graine)
 	profondeur = plan.size()
@@ -164,6 +172,11 @@ func _inventer(graine: int) -> void:
 	pieces.append({"type": "couloir", "nom": NOMS["couloir"], "rect": couloir})
 	pieces.append({"type": "entree", "nom": NOMS["entree"], "rect": entree})
 	_metiers(chambres)
+	# la maison bonus : une chance sur quatre (un tirage à part : le plan d'une graine n'en dépend pas)
+	if not bonus_voulu.is_empty():
+		_primer(bonus_voulu)
+	else:
+		_primer(tirage_bonus(graine).slice(0, 3 if chambres.size() >= 8 else 2))
 
 
 func _creuser(g: Array, r: Rect2i) -> void:
@@ -253,6 +266,42 @@ func _metiers(chambres: Array) -> void:
 			k += 1
 	for i in chambres.size():
 		pieces.append({"type": metier[i], "nom": NOMS[metier[i]], "rect": chambres[i]})
+
+
+# ce que la graine réserve : rien (trois fois sur quatre), ou les pièces bonus de la maison, dans l'ordre où elles viendront
+static func tirage_bonus(graine: int) -> Array:
+	var h := RandomNumberGenerator.new()
+	h.seed = graine * 7919 + 13
+	if h.randf() >= R.CHANCE_BONUS:
+		return []
+	var sortes: Array = R.BONUS.duplicate()
+	for i in range(sortes.size() - 1, 0, -1):
+		var k := h.randi_range(0, i)
+		var x = sortes[i]
+		sortes[i] = sortes[k]
+		sortes[k] = x
+	return sortes
+
+
+# des pièces ordinaires deviennent des pièces bonus : les débarras d'abord, puis le bureau, puis les chambres en trop (il en reste une)
+func _primer(sortes: Array) -> void:
+	var candidates: Array = []
+	var gardee := -1
+	for metier in ["debarras", "bureau", "chambre"]:
+		var du_metier: Array = []
+		for i in pieces.size():
+			if pieces[i].type == metier:
+				du_metier.append(i)
+		if metier == "chambre" and not du_metier.is_empty():
+			gardee = du_metier.pop_front()
+		candidates.append_array(du_metier)
+	if not bonus_voulu.is_empty() and gardee >= 0:      # (aux essais, on prend aussi la dernière chambre)
+		candidates.append(gardee)
+	for k in mini(sortes.size(), candidates.size()):
+		var p: Dictionary = pieces[candidates[k]]
+		p.type = sortes[k]
+		p.nom = NOMS[sortes[k]]
+		bonus.append(sortes[k])
 
 
 # --- où l'on est ---
@@ -397,8 +446,11 @@ func ajouter_decor(d: Dictionary) -> void:
 	corps.position = d.pos
 	corps.rotation.y = d.yaw
 	add_child(corps)
-	for b in d.boites:
-		_boite(corps, b[0], b[1], mat(b[2]), d.get("solide", true))
+	for b in d.boites:               # (une boîte : son milieu, sa taille, sa couleur ; et, si elle est tournée ou qu'elle luit, de combien)
+		_boite(corps, b[0], b[1], mat(b[2], b[4] if b.size() > 4 else 0.0), d.get("solide", true))
+		if b.size() > 3 and b[3] != 0.0:
+			for k in (2 if d.get("solide", true) else 1):
+				corps.get_child(corps.get_child_count() - 1 - k).rotation.y = b[3]
 
 
 func _sol() -> void:
@@ -489,6 +541,9 @@ func _lampes() -> void:
 			var f := (i + 0.5) / n
 			var ou := Vector2(r.position.x + r.size.x * (f if r.size.x >= r.size.y else 0.5), r.position.y + r.size.y * (0.5 if r.size.x >= r.size.y else f))
 			_lampe(ou)
+			if LUEURS.has(piece.type):       # une pièce bonus a sa lumière à elle
+				lampes[lampes.size() - 1].lumiere.light_color = LUEURS[piece.type][0]
+				lampes[lampes.size() - 1].lumiere.light_energy = LUEURS[piece.type][1]
 
 
 func _lampe(p: Vector2) -> void:

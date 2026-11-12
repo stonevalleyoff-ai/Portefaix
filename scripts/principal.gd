@@ -45,9 +45,11 @@ var objets := {}
 var hasard := RandomNumberGenerator.new()
 var temps := 0.0
 var total := 0
+var prime := 0                    # ce que valent les trésors d'une maison bonus (hors quota)
 var quota := 0
 var charge := 0
 var gagne := false
+var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces pièces bonus
 var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
 var repit: float = R.REPIT       # la chose dort jusque-là (l'essai le repousse)
 var bras := {}                    # chez l'hôte : le porteur → ce qu'il reste à ses deux bras pour repousser
@@ -325,7 +327,7 @@ func lancer() -> void:
 	for id in ids:
 		pseudos.append(str(noms.get(id, "Porteur")))
 	chat.chaine = "" if hors_ligne else ui.chaine()
-	commencer.rpc(graine if graine != -1 else int(hasard.randi()), ids, pseudos)
+	commencer.rpc(graine if graine != -1 else _au_hasard(), ids, pseudos)
 
 
 func retour_menu(avis: String = "") -> void:
@@ -355,6 +357,27 @@ func _vider() -> void:
 
 # --- le début d'une nuit, chez tout le monde ---
 
+# la graine de la nuit. « --bonus=cave,garage » (ou « ?bonus=cave,garage » dans l'adresse de la page) : on en cherche une qui donne ces pièces-là
+func _au_hasard() -> int:
+	var voulu := ""
+	for a in OS.get_cmdline_args() + OS.get_cmdline_user_args():
+		if a.begins_with("--bonus="):
+			voulu = a.trim_prefix("--bonus=")
+	if web and voulu == "":
+		voulu = str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('bonus') || ''", true))
+	var sortes: Array = Array(voulu.split(",", false)).filter(func(s): return R.BONUS.has(s)).slice(0, 2)
+	if voulu != "" and sortes.is_empty():        # « ?bonus=oui » : n'importe laquelle, mais une maison bonus
+		sortes = [""]
+	for essai in 50000:
+		var g := int(hasard.randi())
+		if sortes.is_empty():
+			return g
+		var tire: Array = Maison.tirage_bonus(g).slice(0, 2)
+		if not tire.is_empty() and sortes.all(func(s): return s == "" or tire.has(s)):
+			return g
+	return int(hasard.randi())
+
+
 @rpc("authority", "call_local", "reliable")
 func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	_vider()
@@ -367,6 +390,8 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	maison = Maison.new()
 	maison.name = "Maison"
 	monde.add_child(maison)
+	if graine < 0:
+		maison.bonus_voulu = bonus_voulu
 	maison.construire(graine)
 	_meubler(graine)
 	for k in ids.size():
@@ -387,7 +412,11 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	micro.regler(ui.micro() and DisplayServer.get_name() != "headless")
 	sons.nuit(true)
 	ui.partie()
-	ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez." % quota, 7.0)
+	if maison.bonus.is_empty():
+		ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez." % quota, 7.0)
+	else:
+		var noms: Array = maison.bonus.map(func(b): return maison.NOMS[b])
+		ui.annoncer("MAISON BONUS ! Ici : %s. Une fortune, en plus du quota.\nChargez pour %d € avant 6 h, puis klaxonnez." % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, quota], 10.0)
 	if not tactile.actif:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -417,6 +446,7 @@ func _meubler(graine: int) -> void:
 		maison.ajouter_decor(d)
 	maison.encombrer(a.lourds, a.fixes)
 	total = 0
+	prime = 0
 	for d in a.objets:
 		var o := Objet.new()
 		o.preparer(self, objets.size(), d.type)
@@ -430,7 +460,11 @@ func _meubler(graine: int) -> void:
 		if serveur:
 			o.choc.connect(_sur_choc)
 		objets[o.id] = o
-		total += o.valeur
+		o.bonus = d.get("bonus", false)
+		if o.bonus:                      # la prime ne compte pas dans le quota : c'est en plus
+			prime += o.valeur
+		else:
+			total += o.valeur
 
 
 func ajouter_joueur(id: int, ou: Vector3, rang: int, pseudo: String = "Porteur"):
@@ -491,6 +525,11 @@ func prendre(qui: int, ido: int) -> void:
 		_dire_a(qui, "Tes bras repoussent encore.")
 		return
 	objet_info.rpc(ido, o.valeur, o.prises + o.accroches(j, libres))
+	if o.maudit and not o.eveille:   # on ne touche pas au grimoire : dans la maison, ça s'entend de partout
+		o.eveille = true
+		chose.reveiller()
+		chose.entendre(o.global_position, 80.0)
+		annonce.rpc("%s a pris le grimoire. Quelque chose, dans la maison, a tourné la tête." % j.nom)
 
 
 func lacher(qui: int, ido: int, lance: bool) -> void:
@@ -889,7 +928,7 @@ func _temoigner(dt: float) -> void:
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
 		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
-		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0,
+		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime,
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	JavaScriptBridge.eval("window.portefaix=" + JSON.stringify(t) + ";", true)
 

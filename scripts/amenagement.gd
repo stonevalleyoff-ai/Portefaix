@@ -25,6 +25,7 @@ var _libres: Array = []           # ce qu'il faut laisser devant les portes
 var _aux_murs: Array = []         # ce qui est accroché
 var _chambres := 0
 var _horloge := false
+var _prime := false              # on meuble une pièce bonus : ce qu'on y pose est de la prime
 
 
 func amenager(maison, hasard: RandomNumberGenerator) -> void:
@@ -35,7 +36,20 @@ func amenager(maison, hasard: RandomNumberGenerator) -> void:
 		_pris = []
 		_aux_murs = []
 		_libres = m.devants_de_porte(p.rect)
+		_prime = R.BONUS.has(p.type)
 		match p.type:
+			"cave":
+				_cave()
+			"garage":
+				_garage()
+			"tresor":
+				_tresor()
+			"arcade":
+				_arcade()
+			"nains":
+				_nains()
+			"trone":
+				_trone()
 			"salon":
 				_salon()
 			"manger":
@@ -207,6 +221,176 @@ func _debarras() -> void:
 	_ou_il_reste("panier")
 
 
+# --- les pièces bonus : une maison sur quatre en a (maison.bonus) ---
+
+# la cave : quelqu'un y a tracé un pentagramme, et ne l'a pas effacé en partant
+func _cave() -> void:
+	var c := _r.get_center()
+	var rouge := Color(0.75, 0.05, 0.04)
+	var rayon := clampf(minf(_r.size.x, _r.size.y) * 0.5 - 1.0, 0.7, 1.5)
+	var traits: Array = []
+	var pointes: Array = []
+	for i in 5:
+		pointes.append(Vector2(cos(i * TAU / 5.0 - PI * 0.5), sin(i * TAU / 5.0 - PI * 0.5)) * rayon)
+	for i in 5:                                  # l'étoile : de chaque pointe à la deuxième suivante
+		traits.append(_trait(pointes[i], pointes[(i + 2) % 5], rouge))
+	for i in 16:                                 # le cercle autour
+		traits.append(_trait(Vector2(cos(i * TAU / 16.0), sin(i * TAU / 16.0)) * rayon * 1.08, Vector2(cos((i + 1) * TAU / 16.0), sin((i + 1) * TAU / 16.0)) * rayon * 1.08, rouge))
+	decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0, "solide": false, "boites": traits})
+	var pierre := Color(0.3, 0.29, 0.31)
+	var autel := _decor_au_mur(Vector3(1.5, 0.9, 0.65), [
+		[Vector3(0, 0.4, 0), Vector3(1.3, 0.8, 0.5), pierre],
+		[Vector3(0, 0.85, 0), Vector3(1.5, 0.1, 0.65), pierre.darkened(0.3)],
+		[Vector3(0, 0.905, 0), Vector3(0.5, 0.012, 0.65), rouge]])
+	_sur(autel, "grimoire")
+	_sur(autel, "calice", -0.52)
+	_sur(autel, "crane", 0.52)
+	for p in pointes:                            # une bougie noire à chaque pointe, et un crâne au milieu
+		if _libre(_emprise(c + p, _t("bougie"), 0.0), 0.0):
+			_poser("bougie", c + p, 0.0)
+	if _libre(_emprise(c, _t("crane"), 0.0), 0.0):
+		_poser("crane", c, h.randf() * TAU)
+	_mur("statue_bouc")
+	_coin("tonneau")
+	_coin("tonneau")
+	_ou_il_reste("casier_vin")
+	_ou_il_reste("casier_vin")
+	_ou_il_reste("carton")
+
+
+# le garage : une moto qui n'a pas roulé depuis longtemps, et de quoi la réparer
+func _garage() -> void:
+	var c := _r.get_center()
+	var jaune := Color(0.9, 0.75, 0.1)
+	var long := _r.size.x >= _r.size.y
+	var place := Vector2(2.7, 1.5) if long else Vector2(1.5, 2.7)
+	if _r.grow(-0.5).encloses(Rect2(c - place * 0.5, place)):      # la place peinte au sol, et la tache d'huile
+		decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0 if long else PI * 0.5, "solide": false, "boites": [
+			[Vector3(0, 0.006, -0.75), Vector3(2.7, 0.012, 0.08), jaune], [Vector3(0, 0.006, 0.75), Vector3(2.7, 0.012, 0.08), jaune],
+			[Vector3(-1.35, 0.006, 0), Vector3(0.08, 0.012, 1.58), jaune], [Vector3(0.5, 0.005, 0.2), Vector3(0.5, 0.01, 0.4), Color(0.05, 0.05, 0.06), 0.5]]})
+	_milieu("moto", 0.0 if long else PI * 0.5)
+	var bois := Color(0.45, 0.32, 0.2)
+	var etabli := _decor_au_mur(Vector3(1.8, 0.9, 0.6), [
+		[Vector3(0, 0.86, 0), Vector3(1.8, 0.08, 0.6), bois],
+		[Vector3(-0.8, 0.41, 0), Vector3(0.1, 0.82, 0.5), bois.darkened(0.3)], [Vector3(0.8, 0.41, 0), Vector3(0.1, 0.82, 0.5), bois.darkened(0.3)],
+		[Vector3(0, 0.25, 0), Vector3(1.5, 0.05, 0.5), bois.darkened(0.2)],
+		[Vector3(0.6, 0.98, -0.1), Vector3(0.18, 0.16, 0.3), Color(0.25, 0.3, 0.4)]])
+	_sur(etabli, "caisse_outils", -0.3)
+	_mur("velo")
+	_coin("pneus")
+	_coin("pneus")
+	_ou_il_reste("bidon")
+	_ou_il_reste("bidon")
+	_ou_il_reste("caisse_outils")
+	_ou_il_reste("carton")
+
+
+# la chambre forte : ce que les propriétaires n'ont jamais déclaré
+func _tresor() -> void:
+	var c := _r.get_center()
+	_tapis(c, Vector2(minf(_r.size.x - 1.0, 3.0), minf(_r.size.y - 1.0, 3.0)), Color(0.5, 0.06, 0.1))
+	var marbre := Color(0.85, 0.84, 0.8)
+	var socle := _socle(c, Vector3(0.6, 0.95, 0.6), [
+		[Vector3(0, 0.05, 0), Vector3(0.6, 0.1, 0.6), marbre], [Vector3(0, 0.47, 0), Vector3(0.42, 0.75, 0.42), marbre.darkened(0.1)],
+		[Vector3(0, 0.9, 0), Vector3(0.6, 0.1, 0.6), marbre]])
+	_sur(socle, "vase_ming")                     # (très cher, très fragile, et posé bien haut)
+	var coffre := _mur("coffre_fort")
+	_sur(coffre, "lingot")
+	_mur("armure")
+	_mur("armure")
+	_mural("tableau_maitre")
+	_mural("tableau_maitre")
+	for i in 4:
+		_ou_il_reste("lingot")
+	_ou_il_reste("boite_bijoux")
+
+
+# la salle d'arcade : tout marche encore, c'est bien le problème
+func _arcade() -> void:
+	_tapis(_r.get_center(), Vector2(minf(_r.size.x - 0.8, 3.4), minf(_r.size.y - 0.8, 3.4)), Color(0.3, 0.1, 0.45))
+	_milieu("baby_foot", 0.0 if _r.size.x >= _r.size.y else PI * 0.5)
+	_mur("borne_arcade")
+	_mur("borne_arcade")
+	_mur("jukebox")
+	_mur("flipper")
+	_mur("borne_arcade")
+	_ou_il_reste("coussin")
+	_ou_il_reste("coussin")
+	_ou_il_reste("carton")
+
+
+# le cercle des nains : ils regardent tous celui du milieu. Personne ne sait depuis quand.
+func _nains() -> void:
+	var c := _r.get_center()
+	_tapis(c, Vector2(_r.size.x - 0.5, _r.size.y - 0.5), Color(0.2, 0.5, 0.18))
+	var socle := _socle(c, Vector3(0.4, 0.3, 0.4), [[Vector3(0, 0.15, 0), Vector3(0.4, 0.3, 0.4), Color(0.5, 0.5, 0.48)]])
+	if socle.is_empty():
+		_ou_il_reste("nain_dore")
+	else:
+		_sur(socle, "nain_dore")
+	var rayon := clampf(minf(_r.size.x, _r.size.y) * 0.5 - 0.7, 0.8, 1.7)
+	var combien := int(clampf(rayon * 6.0, 6.0, 10.0))
+	for i in combien:
+		var a := i * TAU / combien
+		for pres: float in [1.0, 0.72, 0.5]:         # (devant une porte, il se serre vers le milieu)
+			var ou := c + Vector2(cos(a), sin(a)) * rayon * pres
+			if _libre(_emprise(ou, _t("nain"), 0.0), 0.0):
+				_poser("nain", ou, atan2(-cos(a), -sin(a)))      # tourné vers le milieu
+				break
+	_coin("plante")
+	_coin("plante")
+	_coin("nain")                                # (et un qui boude)
+
+
+# la salle du trône : il fallait bien le mettre quelque part
+func _trone() -> void:
+	var or_ := Color(0.9, 0.72, 0.2)
+	var pourpre := Color(0.45, 0.05, 0.12)
+	var estrade := _decor_au_mur(Vector3(1.6, 0.2, 1.3), [
+		[Vector3(0, 0.1, 0), Vector3(1.6, 0.2, 1.3), pourpre],
+		[Vector3(0, 0.205, 0.6), Vector3(1.6, 0.012, 0.1), or_],
+		[Vector3(0, 1.1, -0.57), Vector3(1.0, 1.8, 0.1), pourpre.lightened(0.1)],      # le dais, derrière
+		[Vector3(-0.55, 1.1, -0.57), Vector3(0.1, 1.9, 0.14), or_], [Vector3(0.55, 1.1, -0.57), Vector3(0.1, 1.9, 0.14), or_],
+		[Vector3(0, 2.05, -0.57), Vector3(1.3, 0.12, 0.16), or_], [Vector3(0, 2.2, -0.57), Vector3(0.3, 0.2, 0.12), or_]])
+	if estrade.is_empty():
+		_ou_il_reste("toilettes_or")
+	else:
+		_pris[_pris.size() - 1][1] = 2.3         # (le dais monte haut : rien d'accroché derrière)
+		_sur(estrade, "toilettes_or", 0.0, -0.08)
+		_sur(estrade, "rouleau_or", 0.55, -0.3)
+		var devant: Vector2 = estrade.c + _avant(estrade) * 1.9      # le tapis rouge, jusqu'aux marches
+		var t := Vector2(1.0, 2.2) if absf(_avant(estrade).y) > 0.5 else Vector2(2.2, 1.0)
+		_tapis(devant, t, Color(0.6, 0.06, 0.08))
+	for sens: float in [-1.0, 1.0]:
+		if _a_cote(estrade, "chandelier", sens).is_empty():
+			_ou_il_reste("chandelier")
+	_mur("armure")                               # la garde
+	_mur("armure")
+	_mural("miroir", 1.5)
+	_mural("tableau_maitre")
+	_ou_il_reste("rouleau_or")
+	_ou_il_reste("rouleau_or")
+	_ou_il_reste("coussin")
+
+
+# un trait peint au sol, d'un point à un autre (autour du milieu du décor) : une boîte plate, tournée, qui luit un peu
+func _trait(a: Vector2, b: Vector2, couleur: Color) -> Array:
+	var d := b - a
+	return [Vector3((a.x + b.x) * 0.5, 0.008, (a.y + b.y) * 0.5), Vector3(d.length(), 0.016, 0.07), couleur, -atan2(d.y, d.x), 1.2]
+
+
+# un socle qui tient à la maison, ici même (s'il y a la place)
+func _socle(c: Vector2, t: Vector3, boites: Array) -> Dictionary:
+	var e := _emprise(c, t, 0.0)
+	if not _libre(e, 0.3):
+		return {}
+	_pris.append([e, t.y])
+	lourds.append(e)
+	fixes.append(e)
+	decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0, "boites": boites, "solide": true})
+	return {"c": c, "yaw": 0.0, "t": t, "haut": t.y, "e": e}
+
+
 # --- poser ---
 
 func _t(type: String) -> Vector3:
@@ -255,7 +439,7 @@ func _libre(e: Rect2, marge: float = 0.04) -> bool:
 func _poser(type: String, c: Vector2, yaw: float, y: float = 0.0) -> Dictionary:
 	var t := _t(type)
 	var e := _emprise(c, t, yaw)
-	objets.append({"type": type, "pos": Vector3(c.x, y + t.y * 0.5 + 0.02, c.y), "yaw": yaw, "accroche": false})
+	objets.append({"type": type, "pos": Vector3(c.x, y + t.y * 0.5 + 0.02, c.y), "yaw": yaw, "accroche": false, "bonus": _prime})
 	if y <= 0.0:
 		_pris.append([e, t.y])
 		if R.CATALOGUE[type].masse >= R.OBJET_LEGER:
@@ -413,7 +597,7 @@ func _mural(type: String, hauteur: float = 1.6) -> void:
 			if gene:
 				continue
 			_aux_murs.append(e)
-			objets.append({"type": type, "pos": Vector3(c.x, hauteur, c.y), "yaw": YAW[cote], "accroche": true})
+			objets.append({"type": type, "pos": Vector3(c.x, hauteur, c.y), "yaw": YAW[cote], "accroche": true, "bonus": _prime})
 			return
 
 

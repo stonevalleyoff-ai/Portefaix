@@ -181,6 +181,94 @@ func _maisons() -> void:
 	verif(meublees and moins >= 40, "chacune est meublée : un canapé, une télé, un lit, une table, un frigo, des tableaux (de %d à %d objets)" % [moins, plus])
 	verif(rangees and portes_libres, "tout est posé sur du sol, dans la maison, et rien ne barre une porte")
 	verif(antres, "dans chacune, le fantôme se réveille à un endroit dégagé de sa pièce, pas dans un meuble")
+	_bonus(Maison, Amenagement)
+
+
+# les maisons bonus : une sur quatre, avec ses pièces loufoques et ses trésors
+func _bonus(Maison, Amenagement) -> void:
+	var combien := 0
+	var vues := {}
+	for graine in range(1, 401):
+		var t: Array = Maison.tirage_bonus(graine)
+		if not t.is_empty():
+			combien += 1
+			vues[t[0]] = true
+	verif(combien >= 70 and combien <= 130 and vues.size() == R.BONUS.size(), "sur 400 graines, %d maisons bonus (une sur quatre, à peu près), et chaque pièce bonus sort" % combien)
+	var attendus := {"cave": ["grimoire", "calice", "bougie", "statue_bouc"], "garage": ["moto", "velo", "caisse_outils"], "tresor": ["coffre_fort", "lingot", "vase_ming"],
+		"arcade": ["borne_arcade", "flipper", "jukebox"], "nains": ["nain_dore", "nain"], "trone": ["toilettes_or", "chandelier", "rouleau_or"]}
+	var pleines := 0
+	var essayees := 0
+	var manques := {}
+	var ordinaires := true
+	var riches := true
+	var rangees := true
+	var jointes := true
+	var graine := 0
+	var faites := 0
+	while faites < 24 and graine < 400:
+		graine += 1
+		if Maison.tirage_bonus(graine).is_empty():
+			continue
+		faites += 1
+		var m = Maison.new()
+		m.construire(graine)
+		var h := RandomNumberGenerator.new()
+		h.seed = graine + 1
+		var a = Amenagement.new()
+		a.amenager(m, h)
+		var metiers := {}
+		for p in m.pieces:
+			metiers[p.type] = true
+		ordinaires = ordinaires and metiers.has("salon") and metiers.has("cuisine") and metiers.has("chambre") and metiers.has("bain") and m.bonus.size() >= 1
+		var prime := 0
+		var reste := 0
+		var types := {}
+		for o in a.objets:
+			if o.bonus:
+				prime += R.CATALOGUE[o.type].valeur
+				types[o.type] = true
+			else:
+				reste += R.CATALOGUE[o.type].valeur
+			rangees = rangees and m.dedans(o.pos) and m.lettre(int(o.pos.x), int(o.pos.z)) == "."
+		riches = riches and prime >= 3000 and reste >= 3000
+		for b in m.bonus:
+			essayees += 1
+			var complet := true
+			for t in attendus[b]:
+				if not types.has(t):
+					complet = false
+					manques["%s sans %s (graine %d)" % [b, t, graine]] = true
+			if complet:
+				pleines += 1
+		m.encombrer(a.lourds, a.fixes)
+		for z in m.profondeur:
+			for x in m.largeur:
+				if m.plan[z][x] != "#" and m.grille.get_id_path(m.case_de(m.seuil), Vector2i(x, z)).is_empty():
+					jointes = false
+		m.free()
+	if not manques.is_empty():
+		print("     (", ", ".join(manques.keys().slice(0, 6)), ")")
+	verif(faites == 24 and ordinaires, "une maison bonus garde son salon, sa cuisine, une chambre, sa salle de bain, et gagne une à trois pièces bonus")
+	verif(pleines >= essayees * 0.9, "les pièces bonus sont meublées de leurs trésors (%d sur %d au complet)" % [pleines, essayees])
+	verif(riches and rangees and jointes, "leurs trésors valent une fortune, tout y est posé sur du sol, et la maison reste d'un seul tenant")
+	# la maison d'essai, avec chaque pièce bonus tour à tour
+	var toutes := true
+	for b in R.BONUS:
+		var m = Maison.new()
+		m.bonus_voulu = [b]
+		m.construire(-7)
+		var h := RandomNumberGenerator.new()
+		h.seed = 8
+		var a = Amenagement.new()
+		a.amenager(m, h)
+		var la := false
+		for o in a.objets:
+			la = la or (o.bonus and o.type == attendus[b][0])
+		toutes = toutes and m.bonus == [b] and la
+		if not la:
+			print("     (", b, " sans ", attendus[b][0], ")")
+		m.free()
+	verif(toutes, "chacune des six pièces bonus se meuble dans la maison d'essai")
 
 
 # --- seul ---
@@ -660,6 +748,41 @@ func _seul() -> void:
 	jeu.tuer(1)
 	await _attendre(0.2)
 	verif(jeu.etat == jeu.FIN and not jeu.gagne, "plus un porteur en vie : c'est perdu")
+
+	print("12. La maison bonus")
+	var ordinaire: int = jeu.total
+	jeu.bonus_voulu = ["cave", "garage"]
+	jeu.lancer()
+	await _attendre(0.5)
+	verif(jeu.maison.bonus == ["cave", "garage"] and jeu.ui._annonce.text.contains("MAISON BONUS") and jeu.ui._annonce.text.contains("la cave au rituel"),
+		"la maison d'essai, avec une cave et un garage : l'écran l'annonce")
+	var tresors := 0
+	for o in jeu.objets.values():
+		if o.bonus:
+			tresors += o.valeur
+	verif(jeu.prime == tresors and jeu.prime >= 3000 and jeu.quota == R.quota(jeu.total, 1) and jeu.total < ordinaire,
+		"ses trésors valent %d €, en plus : le quota (%d €) ne compte que le mobilier ordinaire" % [jeu.prime, jeu.quota])
+	var moto = _trouver("moto")
+	var grimoire = _trouver("grimoire")
+	verif(moto != null and grimoire != null and moto.physics_material_override.friction < 0.2, "il y a une moto au garage (elle roule), et un grimoire sur l'autel de la cave")
+	await _attendre(1.0)
+	verif(moto.global_position.y < 0.8 and grimoire.global_position.y > 0.8 and moto.valeur == moto.valeur_neuve and grimoire.valeur == grimoire.valeur_neuve, "posés, ils ne bougent pas et ne cassent rien")
+	var lingot = jeu.objets.values().filter(func(o): return o.type == "caisse_outils")[0]
+	jeu.moi.global_position = lingot.global_position + Vector3(0.0, 0.0, 0.9)
+	jeu.moi.global_position.y = 0.05
+	jeu.prendre(1, lingot.id)
+	await _attendre(0.2)
+	verif(jeu.chose.mode == jeu.chose.DORT, "prendre un trésor ordinaire ne réveille personne")
+	jeu.lacher(1, lingot.id, false)
+	jeu.moi.global_position = grimoire.global_position + Vector3(0.0, 0.0, 0.9)
+	jeu.moi.global_position.y = 0.05
+	jeu.prendre(1, grimoire.id)
+	await _attendre(0.2)
+	verif(jeu.chose.mode == jeu.chose.ENQUETE and jeu.ui._annonce.text.contains("grimoire"), "prendre le grimoire, si : le fantôme se réveille et vient voir, d'où qu'il soit")
+	jeu.lacher(1, grimoire.id, false)
+	jeu.tuer(1)
+	await _attendre(0.2)
+	jeu.bonus_voulu = []
 	jeu.retour_menu()
 	verif(jeu.etat == jeu.MENU and jeu.monde == null and jeu.joueurs.is_empty(), "et l'on revient au menu")
 

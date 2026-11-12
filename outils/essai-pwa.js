@@ -74,6 +74,14 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   const partie = await attendre(e => e.etat === 'partie' && e.meubles >= 40, 30000);
   verif(partie && partie.quota > 0 && partie.pieces >= 6, `et l'on joue seul : la nuit commence, dans une maison de ${partie && partie.pieces} pièces et ${partie && partie.meubles} objets`);
   await ctx.setOffline(false);
+
+  console.log('4. La maison bonus');
+  await p.goto(BASE + '?bonus=cave,garage');
+  await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);
+  await cliquer('sans_compte'); await cliquer('seul');
+  const bonus = await attendre(e => e.etat === 'partie' && e.meubles >= 40, 30000);
+  verif(bonus && bonus.bonus.includes('cave') && bonus.bonus.includes('garage') && bonus.prime >= 3000 && bonus.quota > 0,
+    `« ?bonus=cave,garage » au bout de l'adresse : la maison a sa cave et son garage, ${bonus && bonus.prime} € de trésors en plus du quota`);
   verif(!erreurs.length, 'aucune erreur dans la page' + (erreurs.length ? ' ; ' + erreurs.slice(0, 3).join(' | ') : ''));
 
   console.log(`\n${ok ? 'Tout passe' : 'ÉCHEC'} : ${n} vérifications`);

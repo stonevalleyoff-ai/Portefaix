@@ -100,6 +100,11 @@ const BRAS_REPOUSSE := 8.0    # le temps qu'il met à repousser
 const BRAS_RAPPEL := 9.0      # la force du rappel (m/s² par mètre de trop)
 const BRAS_ECART := 0.24      # de combien les deux mains s'écartent sur ce qu'elles tiennent
 
+# la maison bonus : une nuit sur quatre, deux ou trois pièces de la maison ne sont pas ce qu'on attendait. Ce qu'on y trouve vaut très
+# cher, et ne compte pas dans le quota : c'est de la prime.
+const CHANCE_BONUS := 0.25
+const BONUS := ["cave", "garage", "tresor", "arcade", "nains", "trone"]
+
 # le mobilier : taille (m ; x le long du mur, y la hauteur, z la profondeur, le devant vers +z), masse (kg), valeur (€),
 # fragile (la part de la valeur qu'un grand choc emporte)
 const CATALOGUE := {
@@ -138,6 +143,39 @@ const CATALOGUE := {
 	"frigo": {"nom": "un frigo", "taille": Vector3(0.7, 1.8, 0.68), "masse": 75.0, "valeur": 420, "fragile": 0.4, "couleur": Color(0.88, 0.89, 0.9)},
 	"armoire": {"nom": "une armoire", "taille": Vector3(1.2, 2.0, 0.6), "masse": 80.0, "valeur": 500, "fragile": 0.3, "couleur": Color(0.3, 0.19, 0.1)},
 	"piano": {"nom": "un piano", "taille": Vector3(1.5, 1.2, 0.65), "masse": 120.0, "valeur": 900, "fragile": 0.5, "couleur": Color(0.06, 0.06, 0.07)},
+	# --- les trésors des pièces bonus ---
+	# la cave au rituel (« maudit » : le prendre fait un bruit que le fantôme entend de partout)
+	"bougie": {"nom": "une bougie noire", "taille": Vector3(0.08, 0.3, 0.08), "masse": 0.3, "valeur": 15, "fragile": 0.5, "couleur": Color(0.08, 0.07, 0.08)},
+	"grimoire": {"nom": "un grimoire", "taille": Vector3(0.36, 0.1, 0.46), "masse": 3.0, "valeur": 1200, "fragile": 0.2, "couleur": Color(0.3, 0.06, 0.06), "maudit": true},
+	"calice": {"nom": "un calice d'or", "taille": Vector3(0.16, 0.3, 0.16), "masse": 1.5, "valeur": 800, "fragile": 0.3, "couleur": Color(0.9, 0.7, 0.2)},
+	"crane": {"nom": "un crâne", "taille": Vector3(0.2, 0.22, 0.26), "masse": 1.0, "valeur": 300, "fragile": 0.9, "couleur": Color(0.88, 0.85, 0.74)},
+	"statue_bouc": {"nom": "une statue de bouc", "taille": Vector3(0.6, 1.5, 0.5), "masse": 45.0, "valeur": 900, "fragile": 0.5, "couleur": Color(0.16, 0.15, 0.17)},
+	"tonneau": {"nom": "un tonneau", "taille": Vector3(0.6, 0.85, 0.6), "masse": 25.0, "valeur": 150, "fragile": 0.2, "couleur": Color(0.4, 0.26, 0.14)},
+	"casier_vin": {"nom": "une caisse de grand cru", "taille": Vector3(0.5, 0.36, 0.34), "masse": 10.0, "valeur": 700, "fragile": 1.0, "couleur": Color(0.5, 0.36, 0.2)},
+	# le garage (« roule » : ça glisse au sol bien mieux qu'un meuble)
+	"moto": {"nom": "une moto", "taille": Vector3(2.1, 1.1, 0.75), "masse": 180.0, "valeur": 2500, "fragile": 0.35, "couleur": Color(0.7, 0.08, 0.08), "roule": true},
+	"velo": {"nom": "un vélo", "taille": Vector3(1.7, 1.0, 0.45), "masse": 11.0, "valeur": 350, "fragile": 0.3, "couleur": Color(0.15, 0.4, 0.7), "roule": true},
+	"caisse_outils": {"nom": "une caisse à outils", "taille": Vector3(0.5, 0.24, 0.24), "masse": 9.0, "valeur": 180, "fragile": 0.1, "couleur": Color(0.75, 0.15, 0.1)},
+	"pneus": {"nom": "une pile de pneus", "taille": Vector3(0.62, 0.7, 0.62), "masse": 24.0, "valeur": 120, "fragile": 0.0, "couleur": Color(0.07, 0.07, 0.08)},
+	"bidon": {"nom": "un bidon d'essence", "taille": Vector3(0.34, 0.45, 0.18), "masse": 8.0, "valeur": 40, "fragile": 0.1, "couleur": Color(0.7, 0.12, 0.1)},
+	# la chambre forte
+	"coffre_fort": {"nom": "un coffre-fort", "taille": Vector3(0.8, 1.2, 0.7), "masse": 160.0, "valeur": 5000, "fragile": 0.1, "couleur": Color(0.22, 0.25, 0.28)},
+	"lingot": {"nom": "un lingot d'or", "taille": Vector3(0.2, 0.08, 0.09), "masse": 11.0, "valeur": 1500, "fragile": 0.0, "couleur": Color(0.95, 0.75, 0.2)},
+	"tableau_maitre": {"nom": "un tableau de maître", "taille": Vector3(1.1, 0.85, 0.12), "masse": 6.0, "valeur": 2500, "fragile": 0.9, "couleur": Color(0.8, 0.62, 0.2)},
+	"vase_ming": {"nom": "un vase Ming", "taille": Vector3(0.34, 0.6, 0.34), "masse": 3.0, "valeur": 3000, "fragile": 1.0, "couleur": Color(0.9, 0.92, 0.95)},
+	"armure": {"nom": "une armure", "taille": Vector3(0.6, 1.9, 0.5), "masse": 55.0, "valeur": 1800, "fragile": 0.4, "couleur": Color(0.6, 0.62, 0.66)},
+	# la salle d'arcade
+	"borne_arcade": {"nom": "une borne d'arcade", "taille": Vector3(0.7, 1.8, 0.8), "masse": 90.0, "valeur": 1200, "fragile": 0.6, "couleur": Color(0.12, 0.1, 0.3)},
+	"flipper": {"nom": "un flipper", "taille": Vector3(0.75, 1.3, 1.4), "masse": 100.0, "valeur": 1500, "fragile": 0.7, "couleur": Color(0.6, 0.1, 0.35)},
+	"baby_foot": {"nom": "un baby-foot", "taille": Vector3(1.5, 0.9, 0.8), "masse": 60.0, "valeur": 600, "fragile": 0.3, "couleur": Color(0.15, 0.45, 0.2)},
+	"jukebox": {"nom": "un juke-box", "taille": Vector3(0.8, 1.5, 0.6), "masse": 85.0, "valeur": 1400, "fragile": 0.7, "couleur": Color(0.75, 0.3, 0.1)},
+	# le cercle des nains
+	"nain": {"nom": "un nain de jardin", "taille": Vector3(0.24, 0.5, 0.24), "masse": 3.0, "valeur": 25, "fragile": 0.9, "couleur": Color(0.75, 0.12, 0.1)},
+	"nain_dore": {"nom": "un nain de jardin en or", "taille": Vector3(0.24, 0.5, 0.24), "masse": 9.0, "valeur": 1500, "fragile": 0.0, "couleur": Color(0.95, 0.75, 0.2)},
+	# la salle du trône
+	"toilettes_or": {"nom": "des toilettes en or massif", "taille": Vector3(0.45, 0.85, 0.7), "masse": 70.0, "valeur": 4000, "fragile": 0.3, "couleur": Color(0.95, 0.75, 0.2)},
+	"chandelier": {"nom": "un chandelier", "taille": Vector3(0.36, 1.4, 0.36), "masse": 9.0, "valeur": 400, "fragile": 0.4, "couleur": Color(0.85, 0.65, 0.2)},
+	"rouleau_or": {"nom": "un rouleau de papier doré", "taille": Vector3(0.13, 0.12, 0.13), "masse": 0.4, "valeur": 500, "fragile": 0.0, "couleur": Color(0.95, 0.78, 0.25)},
 }
 
 
