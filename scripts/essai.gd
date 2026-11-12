@@ -8,7 +8,8 @@ extends Node
 #   outils/godot.sh --headless --path . -- --essai-reseau   un hôte, qui lance lui-même un invité (un second programme) sur
 #       cette machine, et vérifie avec lui que les deux voient la même partie
 #   outils/godot.sh --headless --path . -- --essai-compte   la connexion, contre un faux service de comptes que l'essai
-#       ouvre lui-même sur cette machine : un mauvais mot de passe, un bon, le pseudo, rester connecté, le service en panne, se déconnecter
+#       ouvre lui-même sur cette machine : un mauvais mot de passe, un bon, le pseudo, rester connecté, le service en panne, se déconnecter,
+#       créer un compte, le confirmer par le lien de l'e-mail, demander un nouveau mot de passe et le choisir
 #       (avec --en-ligne : un mauvais mot de passe aussi contre le vrai service, sans rien y écrire)
 #   (-- --essai-client : l'invité que lance l'essai du réseau)
 
@@ -807,6 +808,9 @@ var _vus: Array = []              # les demandes reçues : « POST /auth/v1/… 
 var _sans_cle := 0
 var _meta_pseudo := ""            # le pseudo gardé sur le compte
 var _pseudo_sv := "Ada des Pierres"
+var _cree = null                  # le compte qu'on vient de créer : ce que le jeu a envoyé
+var _demandes: Array = []         # les adresses pour lesquelles on a demandé un nouveau mot de passe
+var _nouveau_mdp := ""
 
 
 func _process(_dt: float) -> void:
@@ -857,7 +861,28 @@ func _repondre(tete: String, corps: String) -> Array:
 		if j is Dictionary and j.get("refresh_token") == "reprise-1":
 			return [200, session.call(2)]
 		return [400, {"code": 400, "error_code": "refresh_token_not_found"}]
-	var porteur := tete.contains("Authorization: Bearer jeton-")
+	if ligne.begins_with("POST /auth/v1/signup"):
+		if not ligne.contains("redirect_to=http"):
+			return [400, {"error_code": "validation_failed"}]
+		if j is Dictionary and str(j.get("password", "")).length() < 6:
+			return [422, {"code": 422, "error_code": "weak_password"}]
+		if j is Dictionary and j.get("email") == "ada@exemple.fr":         # déjà prise : le vrai service répond par un compte sans identité
+			return [200, {"id": "u-faux", "email": "ada@exemple.fr", "identities": []}]
+		_cree = j
+		return [200, {"id": "u-2", "email": j.get("email"), "identities": [{"provider": "email"}], "confirmation_sent_at": "2026-11-12T12:00:00Z"}]
+	if ligne.begins_with("POST /auth/v1/recover"):
+		_demandes.append(str(j.get("email", "")) if j is Dictionary else "")
+		return [200, {}] if ligne.contains("redirect_to=http") else [400, {"error_code": "validation_failed"}]
+	if ligne.begins_with("GET /auth/v1/user"):
+		if tete.contains("Authorization: Bearer lien-bon"):
+			return [200, {"id": "u-1", "email": "ada@exemple.fr", "user_metadata": {"pseudo": _meta_pseudo} if _meta_pseudo != "" else {}}]
+		return [403, {"code": 403, "error_code": "bad_jwt"}]
+	if ligne.begins_with("PUT /auth/v1/user") and tete.contains("Authorization: Bearer lien-bon") and j is Dictionary and j.has("password"):
+		if j.password == "bon":
+			return [422, {"code": 422, "error_code": "same_password"}]
+		_nouveau_mdp = str(j.password)
+		return [200, {"id": "u-1"}]
+	var porteur := tete.contains("Authorization: Bearer jeton-") or tete.contains("Authorization: Bearer lien-bon")
 	if ligne.begins_with("GET /rest/v1/vp_comptes?select=pseudo:donnees-%3E%3Epseudo"):
 		return [200, [{"pseudo": _pseudo_sv}]] if porteur else [401, {"message": "JWT manquant"}]
 	if ligne.begins_with("PUT /auth/v1/user") and porteur and j is Dictionary and j.get("data") is Dictionary:
@@ -935,11 +960,53 @@ func _compte() -> void:
 	verif(not c.connecte and c.jeton == "" and c.nom() == "Porteur" and not FileAccess.file_exists(c.fichier), "déconnecté : plus de jeton, plus rien sur l'appareil")
 	verif(_vus.any(func(l): return l.begins_with("POST /auth/v1/logout")) and _sans_cle == 0, "le service en est prévenu ; chaque demande portait la clé publique")
 	verif(jeu.ui._compte_texte.text == "Sans compte" and jeu.ui._compte_bouton.text == "Se connecter" and not jeu.ui._pseudo_ligne.visible, "le menu le dit, et propose de se reconnecter")
+	print("5. Créer un compte")
+	jeu.ui._vers(jeu.ui._creation)
+	var avant := _vus.size()
+	await c.creer("pas-une-adresse", "motdepasse", "Zoé")
+	verif(not c.connecte and c.erreur != "" and _vus.size() == avant, "une adresse qui n'en est pas une : rien n'est envoyé, et c'est dit")
+	await c.creer("zoe@exemple.fr", "court", "Zoé")
+	verif(c.erreur.contains("six") or c.erreur.contains("6"), "un mot de passe de moins de six caractères : refusé avant d'être envoyé")
+	await c.creer("ada@exemple.fr", "motdepasse", "Ada")
+	verif(not c.connecte and c.erreur.contains("déjà un compte") and c.avis == "", "une adresse déjà prise : c'est dit, avec quoi faire")
+	await c.creer(" zoe@exemple.fr ", "motdepasse", " Zoé <la> Déménageuse de la nuit ")
+	verif(not c.connecte and c.erreur == "" and c.avis.contains("zoe@exemple.fr") and c.avis.contains("confirmation"), "une adresse neuve : le compte est créé, un e-mail de confirmation part")
+	verif(_cree is Dictionary and _cree.email == "zoe@exemple.fr" and _cree.data.pseudo == "Zoé la Déménageu" and _vus[_vus.size() - 1].contains("redirect_to=http"),
+		"le service reçoit l'adresse, le pseudo nettoyé, et où ramener le lien de l'e-mail")
+	verif(jeu.ui._creation.is_visible_in_tree() and jeu.ui._avis_compte[1].text == c.avis and not FileAccess.file_exists(c.fichier), "la page le dit, et attend : on n'est pas connecté tant que l'e-mail n'est pas confirmé")
+	await c.lire_lien("#access_token=lien-bon&refresh_token=reprise-1&expires_in=3600&token_type=bearer&type=signup")
+	verif(c.connecte and not c.a_changer and c.avis.contains("confirmé") and jeu.ui._menu.is_visible_in_tree(), "revenu par le lien de l'e-mail : le compte est confirmé, on est connecté, au menu")
+	c.deconnecter()
+	await _attendre(0.2)
+
+	print("6. Mot de passe oublié")
+	jeu.ui.page_connexion()
+	jeu.ui._email.text = "ada@exemple.fr"
+	jeu.ui._vers(jeu.ui._oubli)
+	verif(jeu.ui._oubli.is_visible_in_tree() and jeu.ui._c["o_email"].text == "ada@exemple.fr", "« Mot de passe oublié ? » : la page reprend l'e-mail déjà tapé")
+	await c.oublie("ada@exemple.fr")
+	verif(_demandes == ["ada@exemple.fr"] and c.erreur == "" and c.avis.contains("e-mail") and not c.connecte, "le lien est demandé au service ; la page dit d'aller voir ses e-mails, sans dire si le compte existe")
+	await c.lire_lien("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired")
+	verif(not c.connecte and c.erreur.contains("expiré"), "un lien expiré : c'est dit, on le redemande")
+	await c.lire_lien("#access_token=lien-faux&refresh_token=x&type=recovery")
+	verif(not c.connecte and c.erreur.contains("expiré"), "un lien qui ne vaut rien : pareil")
+	await c.lire_lien("#access_token=lien-bon&refresh_token=reprise-1&expires_in=3600&token_type=bearer&type=recovery")
+	verif(c.connecte and c.a_changer and jeu.ui._nouveau.is_visible_in_tree(), "le bon lien : la page « Nouveau mot de passe » s'ouvre")
+	await c.changer_mot_de_passe("court", "court")
+	verif(c.a_changer and c.erreur != "" and _nouveau_mdp == "", "trop court : refusé")
+	await c.changer_mot_de_passe("nouveau-secret", "nouveau-secrte")
+	verif(c.a_changer and c.erreur.contains("pas les mêmes") and _nouveau_mdp == "", "deux saisies différentes : refusé")
+	await c.changer_mot_de_passe("nouveau-secret", "nouveau-secret")
+	verif(not c.a_changer and c.connecte and _nouveau_mdp == "nouveau-secret" and jeu.ui._menu.is_visible_in_tree() and jeu.ui._avis.text.contains("changé"),
+		"le nouveau mot de passe est enregistré : on est connecté, au menu, et c'est dit")
+	verif(not FileAccess.get_file_as_string(c.fichier).contains("nouveau-secret"), "et il n'est pas gardé sur l'appareil")
+	c.deconnecter()
+	await _attendre(0.2)
 	_srv.stop()
 	_srv = null
 
 	if OS.get_cmdline_user_args().has("--en-ligne"):
-		print("5. Le vrai service (un mauvais mot de passe, rien n'y est écrit)")
+		print("7. Le vrai service (un mauvais mot de passe, rien n'y est écrit)")
 		var vrai = Compte.new()
 		vrai.fichier = c.fichier
 		add_child(vrai)

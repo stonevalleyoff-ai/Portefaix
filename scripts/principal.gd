@@ -93,6 +93,13 @@ func _ready() -> void:
 	ui.connexion.connect(compte.connecter)
 	ui.deconnexion.connect(compte.deconnecter)
 	ui.pseudo_choisi.connect(compte.nommer)
+	ui.creation.connect(compte.creer)
+	ui.oubli.connect(compte.oublie)
+	ui.nouveau_mot_de_passe.connect(compte.changer_mot_de_passe)
+	ui.page_compte.connect(func():
+		compte.erreur = ""
+		compte.avis = ""
+		_sur_compte())
 	ui.vers_connexion.connect(ui.page_connexion)
 	ui.sans_compte.connect(func(): ui.menu(""))
 	salon = Salon.new()
@@ -131,18 +138,26 @@ func _ready() -> void:
 		return
 	# la première page : la connexion, sauf si l'on était resté connecté
 	ui.page_connexion()
-	await compte.reprendre()
-	if compte.connecte and etat == MENU:
-		ui.menu("")
+	# arrivé par le lien d'un e-mail (un compte à confirmer, un mot de passe à refaire) ? L'adresse de la page le dit ; on l'en efface.
+	if web:
+		var lien = JavaScriptBridge.eval("location.hash", true)
+		if lien is String and (lien.contains("access_token=") or lien.contains("error")):
+			JavaScriptBridge.eval("history.replaceState(null, '', location.pathname + location.search)", true)
+			await compte.lire_lien(lien)
+	if not compte.connecte:
+		await compte.reprendre()
+	_sur_compte()
 
 
 # --- le compte ---
 
 func _sur_compte() -> void:
-	var entre: bool = compte.connecte and not compte.occupe and ui._connexion.is_visible_in_tree()
-	ui.compte(compte.connecte, compte.nom(), compte.occupe, compte.erreur)
-	if entre:                 # connecté : la page de connexion laisse la place au menu
-		ui.menu("")
+	var entre: bool = compte.connecte and not compte.occupe and ui.sur_un_compte()
+	ui.compte(compte.connecte, compte.nom(), compte.occupe, compte.erreur, compte.avis)
+	if compte.connecte and compte.a_changer and etat == MENU:
+		ui.page_nouveau_mot_de_passe()       # venu par « mot de passe oublié » : d'abord en choisir un nouveau
+	elif entre:               # connecté : les pages de compte laissent la place au menu
+		ui.menu(compte.avis)
 	if etat == SALON:
 		if serveur:
 			_dire_salon()
@@ -873,7 +888,7 @@ func _temoigner(dt: float) -> void:
 		ou[str(j.id)] = [snappedf(j.global_position.x, 0.01), snappedf(j.global_position.z, 0.01)]
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
-		"refus": ui._connexion_avis.text, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
+		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
 		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0,
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	JavaScriptBridge.eval("window.portefaix=" + JSON.stringify(t) + ";", true)

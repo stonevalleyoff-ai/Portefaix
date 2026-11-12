@@ -47,6 +47,38 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
     const photo = async quoi => { if (IMAGES) await p.screenshot({ path: path.join(IMAGES, `${quoi}-${nom}.png`), timeout: 20000 }).catch(() => {}); };
     return { nom, p, etat, attendre, cliquer, ecrire, photo, erreurs };
   };
+  console.log('0. Créer un compte, mot de passe oublié');
+  {
+    const dan = await joueur('dan');
+    verif(await dan.attendre('la page de connexion', e => e.etat === 'menu' && e.reperes.vers_creer && e.reperes.vers_oubli, 60000), 'la page de connexion propose de créer un compte, et « Mot de passe oublié ? »');
+    // créer un compte
+    await dan.cliquer('vers_creer');
+    await dan.ecrire('c_pseudo', 'Eve'); await dan.ecrire('c_email', 'eve@exemple.fr'); await dan.ecrire('c_mdp', 'court'); await dan.cliquer('c_creer');
+    verif(await dan.attendre('le refus', e => /6 caractères/.test(e.erreur_compte)) && !service.comptes['eve@exemple.fr'], 'un mot de passe trop court : refusé, rien n\'est créé');
+    await dan.cliquer('c_mdp'); await dan.p.keyboard.press('Control+A'); await dan.p.keyboard.type('motdepasse', { delay: 15 }); await dan.cliquer('c_creer');
+    verif(await dan.attendre('la confirmation', e => /confirmation/.test(e.avis_compte) && /eve@exemple\.fr/.test(e.avis_compte) && !e.connecte), 'un bon : le compte est créé, la page dit d\'aller confirmer par e-mail');
+    verif(service.comptes['eve@exemple.fr'] && service.comptes['eve@exemple.fr'].choisi === 'Eve' && service.courrier.some(c => c.genre === 'confirmation' && c.email === 'eve@exemple.fr'),
+      'le service a le compte, son pseudo, et un e-mail de confirmation à envoyer');
+    // mot de passe oublié
+    await dan.cliquer('c_retour'); await dan.cliquer('vers_oubli');
+    await dan.ecrire('o_email', 'dan@exemple.fr'); await dan.cliquer('o_envoyer');
+    verif(await dan.attendre('le lien', e => /e-mail vient de partir/.test(e.avis_compte)) && service.courrier.some(c => c.genre === 'mot de passe' && c.email === 'dan@exemple.fr'),
+      '« Mot de passe oublié ? » : le lien est demandé pour cette adresse, la page dit d\'aller voir ses e-mails');
+    // le lien de l'e-mail ramène à la page du jeu, avec de quoi entrer dans son adresse : expiré, puis bon
+    await dan.p.goto(`http://127.0.0.1:${PORT_JEU}/#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired`);
+    await dan.p.reload();
+    verif(await dan.attendre('le lien expiré', e => /expiré/.test(e.erreur_compte) && !e.connecte, 60000) && await dan.p.evaluate(() => location.hash === ''), 'un lien expiré : c\'est dit, et l\'adresse de la page est nettoyée');
+    await dan.p.goto(`http://127.0.0.1:${PORT_JEU}/#access_token=${encodeURIComponent('jeton:dan@exemple.fr:9')}&refresh_token=${encodeURIComponent('reprise:dan@exemple.fr:9')}&expires_in=3600&token_type=bearer&type=recovery`);
+    await dan.p.reload();
+    verif(await dan.attendre('le nouveau mot de passe', e => e.a_changer && e.connecte && e.reperes.n_mdp && e.reperes.n_valider, 60000) && await dan.p.evaluate(() => location.hash === ''),
+      'le bon lien : la page « Nouveau mot de passe » s\'ouvre, et le jeton n\'est plus dans l\'adresse');
+    await dan.ecrire('n_mdp', 'tout-neuf'); await dan.ecrire('n_encore', 'tout-neuf'); await dan.cliquer('n_valider');
+    verif(await dan.attendre('le menu', e => !e.a_changer && e.connecte && e.pseudo === 'Dan' && e.reperes.seul) && service.comptes['dan@exemple.fr'].mdp === 'tout-neuf',
+      'le nouveau mot de passe est enregistré : dan est connecté, au menu');
+    verif(!dan.erreurs.length, 'aucune erreur dans la page' + (dan.erreurs.length ? ' ; ' + dan.erreurs.slice(0, 2).join(' | ') : ''));
+    await dan.p.context().close();
+  }
+
   const [ada, bob, cleo] = await Promise.all(['ada', 'bob', 'cleo'].map(joueur));
   const tous = [ada, bob, cleo];
 

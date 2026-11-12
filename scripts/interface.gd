@@ -15,6 +15,10 @@ signal deconnexion
 signal sans_compte
 signal vers_connexion
 signal pseudo_choisi(pseudo: String)
+signal creation(email: String, mot_de_passe: String, pseudo: String)
+signal oubli(email: String)
+signal nouveau_mot_de_passe(nouveau: String, encore: String)
+signal page_compte                 # on change de page de compte : ce qui était écrit ne vaut plus
 signal salon_creer
 signal salon_rejoindre(code: String)
 
@@ -42,6 +46,11 @@ var _fin_texte: Label
 var _fin_rejouer: Button
 var _aide: Label
 var _connexion: Control
+var _creation: Control
+var _oubli: Control
+var _nouveau: Control
+var _avis_compte: Array = []      # la ligne d'avis de chaque page de compte : la même partout
+var _c: Dictionary = {}           # les champs et les boutons des pages de compte, par leur nom
 var _email: LineEdit
 var _mdp: LineEdit
 var _connexion_avis: Label
@@ -71,6 +80,9 @@ func _ready() -> void:
 	add_child(racine)
 	_menu = _page(racine)
 	_connexion = _page(racine)
+	_creation = _page(racine)
+	_oubli = _page(racine)
+	_nouveau = _page(racine)
 	_salon = _page(racine)
 	_fin = _page(racine)
 	_partie = Control.new()
@@ -79,6 +91,7 @@ func _ready() -> void:
 	racine.add_child(_partie)
 	_faire_menu()
 	_faire_connexion()
+	_faire_comptes()
 	_faire_salon()
 	_faire_partie()
 	_faire_fin()
@@ -211,9 +224,67 @@ func _faire_connexion() -> void:
 	_mdp.text_submitted.connect(func(_t): connexion.emit(_email.text, _mdp.text))
 	_connexion.add_child(_mdp)
 	_connexion_avis = _texte(_connexion, "", 18, Color(1.0, 0.5, 0.4))
+	_avis_compte.append(_connexion_avis)
 	_connexion_bouton = _bouton(_connexion, "Se connecter", func(): connexion.emit(_email.text, _mdp.text))
+	var ligne := HBoxContainer.new()
+	ligne.add_theme_constant_override("separation", 10)
+	_connexion.add_child(ligne)
+	_c["vers_creer"] = _bouton(ligne, "Créer un compte", func(): _vers(_creation))
+	_c["vers_oubli"] = _bouton(ligne, "Mot de passe oublié ?", func(): _vers(_oubli))
+	for b in ligne.get_children():
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_b_sans = _bouton(_connexion, "Jouer sans compte", func(): sans_compte.emit())
-	_texte(_connexion, "Pas encore de compte ? Il se crée dans Stone Valley.\nTon mot de passe n'est pas gardé sur cet appareil.", 15, Color(0.6, 0.62, 0.66))
+	_texte(_connexion, "C'est le même compte que dans Stone Valley. Ton mot de passe n'est pas gardé sur cet appareil.", 15, Color(0.6, 0.62, 0.66))
+
+
+func _champ(parent: Control, nom: String, invite: String, secret: bool = false, clavier: int = LineEdit.KEYBOARD_TYPE_DEFAULT) -> LineEdit:
+	var c := LineEdit.new()
+	c.placeholder_text = invite
+	c.secret = secret
+	c.virtual_keyboard_type = clavier
+	c.add_theme_font_size_override("font_size", 20)
+	parent.add_child(c)
+	_c[nom] = c
+	return c
+
+
+# créer un compte ; mot de passe oublié ; choisir un nouveau mot de passe (quand on arrive par le lien de l'e-mail)
+func _faire_comptes() -> void:
+	_texte(_creation, "Créer un compte", 40, Color(1.0, 0.86, 0.5))
+	_texte(_creation, "Il te servira aussi dans Stone Valley.", 18)
+	var pseudo := _champ(_creation, "c_pseudo", "ton pseudo (16 lettres au plus)")
+	pseudo.max_length = 16
+	var email := _champ(_creation, "c_email", "ton e-mail", false, LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS)
+	var mdp := _champ(_creation, "c_mdp", "un mot de passe (6 caractères au moins)", true, LineEdit.KEYBOARD_TYPE_PASSWORD)
+	mdp.text_submitted.connect(func(_t): creation.emit(email.text, mdp.text, pseudo.text))
+	_avis_compte.append(_texte(_creation, "", 18))
+	_c["c_creer"] = _bouton(_creation, "Créer mon compte", func(): creation.emit(email.text, mdp.text, pseudo.text))
+	_c["c_retour"] = _bouton(_creation, "Retour", func(): _vers(_connexion))
+
+	_texte(_oubli, "Mot de passe oublié", 40, Color(1.0, 0.86, 0.5))
+	_texte(_oubli, "Donne l'e-mail de ton compte : tu y recevras un lien pour en choisir un nouveau.", 18)
+	var o_email := _champ(_oubli, "o_email", "ton e-mail", false, LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS)
+	o_email.text_submitted.connect(func(t): oubli.emit(t))
+	_avis_compte.append(_texte(_oubli, "", 18))
+	_c["o_envoyer"] = _bouton(_oubli, "Envoyer le lien", func(): oubli.emit(o_email.text))
+	_c["o_retour"] = _bouton(_oubli, "Retour", func(): _vers(_connexion))
+
+	_texte(_nouveau, "Nouveau mot de passe", 40, Color(1.0, 0.86, 0.5))
+	var n1 := _champ(_nouveau, "n_mdp", "ton nouveau mot de passe (6 caractères au moins)", true, LineEdit.KEYBOARD_TYPE_PASSWORD)
+	var n2 := _champ(_nouveau, "n_encore", "encore une fois", true, LineEdit.KEYBOARD_TYPE_PASSWORD)
+	n2.text_submitted.connect(func(_t): nouveau_mot_de_passe.emit(n1.text, n2.text))
+	_avis_compte.append(_texte(_nouveau, "", 18))
+	_c["n_valider"] = _bouton(_nouveau, "Enregistrer", func(): nouveau_mot_de_passe.emit(n1.text, n2.text))
+
+
+# d'une page de compte à l'autre : l'e-mail déjà tapé suit, les avis s'effacent
+func _vers(page: Control) -> void:
+	if page == _creation and _c["c_email"].text == "":
+		_c["c_email"].text = _email.text
+	if page == _oubli and _c["o_email"].text == "":
+		_c["o_email"].text = _email.text
+	page_compte.emit()
+	_montrer(page)
 
 
 func _faire_salon() -> void:
@@ -278,7 +349,7 @@ func _coin(ancre: int, ou: Vector2, t: Vector2, corps: int) -> Label:
 
 
 func _montrer(page: Control) -> void:
-	for p in [_menu, _connexion, _salon, _fin]:
+	for p in [_menu, _connexion, _creation, _oubli, _nouveau, _salon, _fin]:
 		p.get_parent().get_parent().visible = p == page
 	_partie.visible = page == _partie
 
@@ -309,6 +380,8 @@ func reperes() -> Dictionary:
 	var r := {}
 	var choses := {"email": _email, "mdp": _mdp, "connecter": _connexion_bouton, "sans_compte": _b_sans, "seul": _b_seul, "ouvrir": _ligne_creer, "code": _ligne_code,
 		"entrer": _b_entrer, "commencer": _salon_bouton}
+	for nom in _c:
+		choses[nom] = _c[nom]
 	for nom in choses:
 		var c: Control = choses[nom]
 		if c.is_visible_in_tree():
@@ -329,11 +402,23 @@ func page_connexion() -> void:
 	_montrer(_connexion)
 
 
+func page_nouveau_mot_de_passe() -> void:
+	_montrer(_nouveau)
+
+
+# une page de compte est-elle à l'écran ?
+func sur_un_compte() -> bool:
+	return _connexion.is_visible_in_tree() or _creation.is_visible_in_tree() or _oubli.is_visible_in_tree() or _nouveau.is_visible_in_tree()
+
+
 # l'état du compte, redit aux deux écrans qui en parlent
-func compte(connecte: bool, nom: String, occupe: bool, erreur: String) -> void:
+func compte(connecte: bool, nom: String, occupe: bool, erreur: String, avis: String = "") -> void:
 	_connecte = connecte
-	_connexion_avis.text = "On frappe à la porte…" if occupe else erreur
-	_connexion_avis.add_theme_color_override("font_color", Color(0.75, 0.78, 0.82) if occupe else Color(1.0, 0.5, 0.4))
+	for l in _avis_compte:         # la même ligne sur chaque page de compte : on attend, ça a marché, ou ce qui n'a pas marché
+		l.text = "On frappe à la porte…" if occupe else (erreur if erreur != "" else avis)
+		l.add_theme_color_override("font_color", Color(0.75, 0.78, 0.82) if occupe else (Color(1.0, 0.5, 0.4) if erreur != "" else Color(0.6, 0.95, 0.6)))
+	for nom_bouton in ["c_creer", "o_envoyer", "n_valider"]:
+		_c[nom_bouton].disabled = occupe
 	_connexion_bouton.disabled = occupe
 	_compte_texte.text = ("Connecté : %s" % nom) if connecte else "Sans compte"
 	_compte_bouton.text = "Se déconnecter" if connecte else "Se connecter"
@@ -342,6 +427,8 @@ func compte(connecte: bool, nom: String, occupe: bool, erreur: String) -> void:
 	_en_ligne_maj()
 	if connecte:
 		_mdp.text = ""
+		for champ in ["c_mdp", "n_mdp", "n_encore"]:
+			_c[champ].text = ""
 		if not _pseudo.has_focus():
 			_pseudo.text = nom if nom != "Porteur" else ""
 

@@ -3,13 +3,16 @@
 // les salons en ligne (les six fonctions de supabase.sql, avec les mêmes règles), le tout en mémoire.
 // Il sert aux essais dans un navigateur (outils/essai-en-ligne.js), sans toucher aux vrais comptes ni à la vraie base.
 //   node outils/faux-service.js [port]      (8126 par défaut)
-// Comptes : ada@exemple.fr, bob@exemple.fr, cleo@exemple.fr ; mot de passe « bon ».
+// Comptes : ada@exemple.fr, bob@exemple.fr, cleo@exemple.fr, dan@exemple.fr ; mot de passe « bon ». On peut en créer d'autres, et
+// changer un mot de passe (par un jeton, comme en porte le lien d'un e-mail) ; aucun e-mail ne part : les demandes sont notées.
 'use strict';
 const http = require('http');
-const COMPTES = { 'ada@exemple.fr': { id: 'u-ada', pseudo: 'Ada' }, 'bob@exemple.fr': { id: 'u-bob', pseudo: 'Bob' }, 'cleo@exemple.fr': { id: 'u-cleo', pseudo: '' } };
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function creer() {
+  const COMPTES = { 'ada@exemple.fr': { id: 'u-ada', pseudo: 'Ada' }, 'bob@exemple.fr': { id: 'u-bob', pseudo: 'Bob' }, 'cleo@exemple.fr': { id: 'u-cleo', pseudo: '' },
+    'dan@exemple.fr': { id: 'u-dan', pseudo: 'Dan' } };
+  const courrier = [];             // les e-mails qui seraient partis : { genre, email }
   const salons = new Map();        // code → { hote, etat, membres: [{ uid, numero, pseudo }], signaux: [{ id, de, vers, donnees }] }
   let suite = 0;
   const journal = [];
@@ -76,22 +79,43 @@ function creer() {
       const porteur = /^Bearer jeton:([^:]+):/.exec(req.headers.authorization || ''), email = porteur && COMPTES[porteur[1]] ? porteur[1] : null;
       journal.push(`${req.method} ${req.url}`);
       if (!req.headers.apikey) return rendre(401, { message: 'pas de clé' });
-      if (req.url.startsWith('/auth/v1/token?grant_type=password'))
-        return COMPTES[j.email] && j.password === 'bon' ? rendre(200, session(j.email, 1)) : rendre(400, { code: 400, error_code: 'invalid_credentials' });
+      if (req.url.startsWith('/auth/v1/token?grant_type=password')) {
+        const c = COMPTES[j.email];
+        if (!c || j.password !== (c.mdp || 'bon')) return rendre(400, { code: 400, error_code: 'invalid_credentials' });
+        return c.a_confirmer ? rendre(400, { code: 400, error_code: 'email_not_confirmed' }) : rendre(200, session(j.email, 1));
+      }
+      if (req.url.startsWith('/auth/v1/signup')) {
+        if (!/redirect_to=http/.test(req.url)) return rendre(400, { code: 400, error_code: 'validation_failed' });
+        if (String(j.password || '').length < 6) return rendre(422, { code: 422, error_code: 'weak_password' });
+        if (COMPTES[j.email]) return rendre(200, { id: 'u-faux', email: j.email, identities: [] });       // (comme le vrai service, pour une adresse déjà prise)
+        COMPTES[j.email] = { id: 'u-' + Object.keys(COMPTES).length, pseudo: '', choisi: String((j.data || {}).pseudo || ''), mdp: j.password, a_confirmer: true };
+        courrier.push({ genre: 'confirmation', email: j.email });
+        return rendre(200, { id: COMPTES[j.email].id, email: j.email, identities: [{ provider: 'email' }], confirmation_sent_at: new Date().toISOString() });
+      }
+      if (req.url.startsWith('/auth/v1/recover')) {
+        if (!/redirect_to=http/.test(req.url)) return rendre(400, { code: 400, error_code: 'validation_failed' });
+        courrier.push({ genre: 'mot de passe', email: j.email });
+        return rendre(200, {});
+      }
       if (req.url.startsWith('/auth/v1/token?grant_type=refresh_token')) {
         const m = /^reprise:([^:]+):(\d+)$/.exec(j.refresh_token || '');
         return m && COMPTES[m[1]] ? rendre(200, session(m[1], +m[2] + 1)) : rendre(400, { code: 400, error_code: 'refresh_token_not_found' });
       }
       if (!email) return rendre(401, { message: 'pas de jeton' });
       if (req.url.startsWith('/rest/v1/vp_comptes')) return rendre(200, [{ pseudo: COMPTES[email].pseudo || null }]);
-      if (req.url.startsWith('/auth/v1/user') && req.method === 'PUT') { COMPTES[email].choisi = String((j.data || {}).pseudo || ''); return rendre(200, { id: COMPTES[email].id }); }
+      if (req.url.startsWith('/auth/v1/user') && req.method === 'GET') { COMPTES[email].a_confirmer = false; return rendre(200, session(email, 1).user); }
+      if (req.url.startsWith('/auth/v1/user') && req.method === 'PUT') {
+        if (j.password != null) { if (String(j.password).length < 6) return rendre(422, { code: 422, error_code: 'weak_password' }); COMPTES[email].mdp = String(j.password); }
+        if (j.data) COMPTES[email].choisi = String(j.data.pseudo || '');
+        return rendre(200, { id: COMPTES[email].id });
+      }
       if (req.url.startsWith('/auth/v1/logout')) return rendre(204, {});
       const f = /^\/rest\/v1\/rpc\/(\w+)/.exec(req.url);
       if (f && fonctions[f[1]]) return rendre(200, fonctions[f[1]](COMPTES[email].id, j));
       rendre(404, {});
     });
   });
-  return { serveur, salons, journal };
+  return { serveur, salons, journal, comptes: COMPTES, courrier };
 }
 
 module.exports = { creer };
