@@ -102,6 +102,8 @@ const BRAS_ECART := 0.24      # de combien les deux mains s'écartent sur ce qu'
 
 # la maison bonus : une nuit sur quatre, deux ou trois pièces de la maison ne sont pas ce qu'on attendait. Ce qu'on y trouve vaut très
 # cher, et ne compte pas dans le quota : c'est de la prime.
+# l'étage et le sous-sol : ce qu'on y trouve compte pour un tiers dans le quota (il faut le descendre, ou le remonter, par l'escalier)
+const PART_ETAGES := 0.33
 const CHANCE_BONUS := 0.25
 const BONUS := ["cave", "garage", "tresor", "arcade", "nains", "trone"]
 

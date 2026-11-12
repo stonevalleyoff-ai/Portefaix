@@ -40,8 +40,12 @@ var _t_bloc := 0.0
 var _butees := 0                  # combien de fois de suite il a buté
 var _t_bute := 0.0
 var _evite := {}                  # les cases (fines) où il a buté → jusqu'à quand il les contourne
-var _carte := AStarGrid2D.new()   # sa carte fine : les murs, ce qui tient à la maison, les portes claquées, les meubles lourds
-var _durs := {}                   # ce qui ne bouge pas sur cette carte : les murs, ce qui tient à la maison
+var _carte: AStarGrid2D            # sa carte fine du niveau où il est : les murs, ce qui tient à la maison, les portes claquées, les meubles lourds
+var _cartes := {}                 # une carte par niveau
+var _durs := {}                   # par niveau, ce qui ne bouge pas : les murs, les escaliers, ce qui tient à la maison
+var _niv := 0                     # le niveau de la carte qu'il tient
+var _i_marche := -1               # dans sa route, le point qui est au bout d'un escalier : il y va tout droit, par les marches
+var _etapes := false              # sa route ne mène qu'à un escalier, ou au bout de celui où il est : arrivé, il la refait
 var _t_carte := 0.0
 var _atteint := true              # son chemin va-t-il jusqu'au but, ou seulement au plus près ?
 
@@ -269,7 +273,7 @@ func avancer(dt: float) -> void:
 			var j = principal.joueurs.get(proie)
 			if j == null or not j.vivant:
 				_roder(1.0)
-			elif _a_plat(j.global_position) < R.CHOSE_ALLONGE and _vu <= 0.0:
+			elif _a_plat(j.global_position) < R.CHOSE_ALLONGE and absf(j.global_position.y - global_position.y) < 1.5 and _vu <= 0.0:
 				principal.frapper(proie)       # (le premier coup blesse, le suivant tue)
 				rentrer()
 			elif _vu > R.CHOSE_PERTE:
@@ -283,7 +287,7 @@ func avancer(dt: float) -> void:
 				if _trace <= 0.0:
 					_trace = 0.3
 					_aller(j.global_position)
-				if _i >= route.size() and maison.dedans(j.global_position):      # dans la même case : droit sur lui
+				if _i >= route.size() and maison.dedans(j.global_position) and absf(j.global_position.y - global_position.y) < 1.0:      # dans la même case : droit sur lui
 					_veut = true
 					_vers(j.global_position, vitesse, dt)
 		ENQUETE:
@@ -307,11 +311,13 @@ func avancer(dt: float) -> void:
 			_aller(_destination)
 		# il coupe au plus court tant que la voie est libre : il ne marche pas de case en case
 		for k in 3:
-			if _i + 1 < route.size() and _degage(global_position, route[_i + 1]):
+			if _i + 1 < route.size() and _i != _i_marche and _i + 1 != _i_marche and _degage(global_position, route[_i + 1]):
 				_i += 1
 		if _i < route.size() and _vers(route[_i], vitesse, dt):
 			_i += 1
-			if _i >= route.size() and not _atteint and mode != CHASSE:
+			if _i >= route.size() and _etapes:      # au bout de l'escalier : la suite du chemin, à ce niveau-ci
+				_aller(_destination)
+			elif _i >= route.size() and not _atteint and mode != CHASSE:
 				_t_bute = 1.3                  # au bout d'un chemin qui ne passe pas : il cogne contre ce qui le barre
 				principal.son_a.rpc("choc", global_position + Vector3.UP, -2.0)
 	if not _veut:
@@ -374,7 +380,7 @@ func _case(p: Vector3) -> Vector2i:
 
 
 func _milieu(c: Vector2i) -> Vector3:
-	return Vector3((c.x + 0.5) * PAS, 0.0, (c.y + 0.5) * PAS)
+	return Vector3((c.x + 0.5) * PAS, maison.y_de(_niv), (c.y + 0.5) * PAS)
 
 
 # les cases dont le milieu est dans ce rectangle
@@ -383,36 +389,43 @@ func _cases_de(r: Rect2) -> Array:
 	for z in range(int(floor(r.position.y / PAS)), int(floor(r.end.y / PAS)) + 1):
 		for x in range(int(floor(r.position.x / PAS)), int(floor(r.end.x / PAS)) + 1):
 			var c := Vector2i(x, z)
-			if _carte.is_in_boundsv(c) and r.has_point(Vector2((x + 0.5) * PAS, (z + 0.5) * PAS)):
+			if x >= 0 and z >= 0 and x < maison.largeur * 2 and z < maison.profondeur * 2 and r.has_point(Vector2((x + 0.5) * PAS, (z + 0.5) * PAS)):
 				cases.append(c)
 	return cases
 
 
-# une fois : ce qui ne bougera pas
+# une fois : ce qui ne bougera pas, à chaque niveau
 func _dresser_carte() -> void:
-	_carte.region = Rect2i(0, 0, maison.largeur * 2, maison.profondeur * 2)
-	_carte.cell_size = Vector2(PAS, PAS)
-	_carte.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
-	_carte.update()
-	for z in maison.profondeur:
-		for x in maison.largeur:
-			if maison.plan[z][x] == "#":
-				for c in _cases_de(Rect2(x, z, 1.0, 1.0)):
-					_durs[c] = true
-	for e in maison.fixes:
-		for c in _cases_de(e.grow(0.2)):
-			_durs[c] = true
+	for n in maison.niveaux:
+		var carte := AStarGrid2D.new()
+		carte.region = Rect2i(0, 0, maison.largeur * 2, maison.profondeur * 2)
+		carte.cell_size = Vector2(PAS, PAS)
+		carte.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+		carte.update()
+		_cartes[n] = carte
+		_durs[n] = {}
+		for z in maison.profondeur:
+			for x in maison.largeur:
+				if not maison.plans[n][z][x] in [".", "D", "P"]:
+					for c in _cases_de(Rect2(x, z, 1.0, 1.0)):
+						_durs[n][c] = true
+	for i in maison.fixes.size():
+		for c in _cases_de(maison.fixes[i].grow(0.2)):
+			_durs[maison.fixes_n[i]][c] = true
 	_reporter()
 
 
-# plusieurs fois par seconde : où sont les meubles lourds, là, maintenant ; les portes claquées ; les cases où il vient de buter
+# plusieurs fois par seconde : au niveau où il est, où sont les meubles lourds, là, maintenant ; les portes claquées ; les cases où il vient de buter
 func _reporter() -> void:
 	_t_carte = R.CHOSE_CARTE
+	_niv = maison.niveau_de(global_position.y)
+	_carte = _cartes[_niv]
+	var sol: float = maison.y_de(_niv)
 	_carte.fill_solid_region(_carte.region, false)
-	for c in _durs:
+	for c in _durs[_niv]:
 		_carte.set_point_solid(c, true)
 	for porte in maison.portes:
-		if porte.verrou:
+		if porte.verrou and porte.niveau == _niv:
 			var boite: Vector3 = porte.forme.shape.size
 			for c in _cases_de(Rect2(porte.centre.x - boite.x * 0.5, porte.centre.z - boite.z * 0.5, boite.x, boite.z).grow(0.2)):
 				_carte.set_point_solid(c, true)
@@ -423,8 +436,8 @@ func _reporter() -> void:
 		var demi: Vector3 = o.taille * 0.5
 		var etendue := base.x.abs() * demi.x + base.y.abs() * demi.y + base.z.abs() * demi.z       # la boîte qui l'entoure, dans le monde
 		var p: Vector3 = o.global_position
-		if p.y - etendue.y > 2.0 or p.y + etendue.y < 0.3:
-			continue                       # (au-dessus de sa tête, ou sous ses pieds)
+		if p.y - etendue.y > sol + 2.0 or p.y + etendue.y < sol + 0.3:
+			continue                       # (au-dessus de sa tête, ou sous ses pieds : un autre niveau, aussi)
 		var debout := absf(base.y.y) > 0.9
 		var envers: Transform3D = o.global_transform.affine_inverse()
 		for c in _cases_de(Rect2(p.x - etendue.x, p.z - etendue.z, etendue.x * 2.0, etendue.z * 2.0).grow(0.22)):
@@ -461,17 +474,50 @@ func _libre_pres(c: Vector2i) -> Vector2i:
 
 # il ne sort pas de la maison : ce qui l'appelle dehors l'amène au seuil, pas plus loin. Son chemin contourne les meubles ; si rien ne
 # passe, il va au plus près.
+# D'un niveau à l'autre, il prend l'escalier : son chemin le mène au pied (ou en haut) des marches, puis tout droit à l'autre bout ;
+# là, il le refait.
 func _aller(ou: Vector3) -> void:
 	_destination = ou
+	var but: Vector3 = ou if maison.dedans(ou) else maison.seuil
+	var vers: int = maison.niveau_de(but.y)
+	_i_marche = -1
+	_etapes = false
+	var marches = maison.escalier_sous(global_position)
+	if marches != null:                   # dans l'escalier : il le finit, du côté où il va
+		route = PackedVector3Array([marches.haut if vers > marches.de else marches.bas])
+		_i = 0
+		_i_marche = 0
+		_etapes = true
+		_atteint = true
+		_t_carte = R.CHOSE_CARTE
+		return
 	_reporter()
+	var sortie = null
+	if vers != _niv:
+		var e: Dictionary = maison.escalier_entre(_niv, vers)
+		if not e.is_empty():
+			but = e.entree
+			sortie = e.sortie
+			if _a_plat(but) < 0.7:        # il y est : droit sur les marches, jusqu'à l'autre bout
+				route = PackedVector3Array([sortie])
+				_i = 0
+				_i_marche = 0
+				_etapes = true
+				_atteint = true
+				return
 	var a := _libre_pres(_case(global_position))
-	var b := _libre_pres(_case(ou if maison.dedans(ou) else maison.seuil))
+	var b := _libre_pres(_case(but))
 	var cases := _carte.get_id_path(a, b, true)
 	route = PackedVector3Array()
 	for c in cases:
 		route.append(_milieu(c))
 	_atteint = not cases.is_empty() and cases[cases.size() - 1] == b
 	_i = 1 if route.size() > 1 else 0     # la première case est celle où il est
+	if sortie != null and _atteint:
+		route[route.size() - 1] = but     # (au pied des marches, bien dans l'axe)
+		route.append(sortie)
+		_i_marche = route.size() - 1
+		_etapes = true
 
 
 # de là à là, tout droit, la voie est-elle libre ? (de quoi couper les angles de son chemin, sans frôler un meuble)
@@ -498,7 +544,7 @@ func _vers(p: Vector3, vitesse: float, dt: float) -> bool:
 	velocity = d.normalized() * minf(_allure, d.length() / dt)
 	var avant := global_position
 	move_and_slide()
-	global_position.y = 0.0
+	global_position.y = maison.sol(global_position)
 	_trajet += global_position.distance_to(avant)
 	rotation.y = lerp_angle(rotation.y, atan2(-d.x, -d.z), minf(1.0, dt * 7.0))
 	return false

@@ -49,6 +49,7 @@ var prime := 0                    # ce que valent les trésors d'une maison bonu
 var quota := 0
 var charge := 0
 var gagne := false
+var etages_voulus := false       # pour les essais : la maison d'essai, avec son étage et son sous-sol
 var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces pièces bonus
 var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
 var repit: float = R.REPIT       # la chose dort jusque-là (l'essai le repousse)
@@ -65,6 +66,7 @@ var _t_charge := 0.0
 var _t_vote := 0.0
 var _t_coeur := 0.0
 var _t_temoin := 0.0
+var _t_niveaux := 0.0
 
 
 func _ready() -> void:
@@ -392,6 +394,7 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	monde.add_child(maison)
 	if graine < 0:
 		maison.bonus_voulu = bonus_voulu
+		maison.etages_voulus = etages_voulus
 	maison.construire(graine)
 	_meubler(graine)
 	for k in ids.size():
@@ -413,7 +416,7 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	sons.nuit(true)
 	ui.partie()
 	if maison.bonus.is_empty():
-		ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez." % quota, 7.0)
+		ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez.%s" % [quota, "\nL'escalier est au bout du couloir : un étage, un sous-sol." if maison.niveaux.size() > 1 else ""], 9.0)
 	else:
 		var noms: Array = maison.bonus.map(func(b): return maison.NOMS[b])
 		ui.annoncer("MAISON BONUS ! Ici : %s. Une fortune, en plus du quota.\nChargez pour %d € avant 6 h, puis klaxonnez." % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, quota], 10.0)
@@ -444,7 +447,7 @@ func _meubler(graine: int) -> void:
 	a.amenager(maison, h)
 	for d in a.decors:
 		maison.ajouter_decor(d)
-	maison.encombrer(a.lourds, a.fixes)
+	maison.encombrer(a.lourds, a.fixes, a.lourds_n, a.fixes_n)
 	total = 0
 	prime = 0
 	for d in a.objets:
@@ -463,8 +466,10 @@ func _meubler(graine: int) -> void:
 		o.bonus = d.get("bonus", false)
 		if o.bonus:                      # la prime ne compte pas dans le quota : c'est en plus
 			prime += o.valeur
-		else:
+		elif maison.niveau_de(d.pos.y) == 0:
 			total += o.valeur
+		else:                            # à l'étage, au sous-sol : cela pèse moins dans le quota
+			total += int(o.valeur * R.PART_ETAGES)
 
 
 func ajouter_joueur(id: int, ou: Vector3, rang: int, pseudo: String = "Porteur"):
@@ -942,6 +947,10 @@ func _process(dt: float) -> void:
 	if tactile.actif:        # au doigt, les boutons disent déjà quoi presser
 		indice = indice.replace(" · E : poser · clic droit : lancer", "").replace("E : poser · clic droit : lancer", "").replace("E : ", "Agir : ")
 	ui.dire(temps, charge, quota, moi.bruit, indice)
+	_t_niveaux -= dt
+	if _t_niveaux <= 0.0:
+		_t_niveaux = 0.25
+		_niveler()
 	ui.vote(_vote.ouvert, _vote.options, _vote.voix, _vote.reste)
 	# le cœur bat quand la chose est près
 	var d: float = moi.global_position.distance_to(chose.global_position)
@@ -949,6 +958,35 @@ func _process(dt: float) -> void:
 	if moi.vivant and chose.mode != Creature.DORT and d < 10.0 and _t_coeur <= 0.0:
 		_t_coeur = remap(d, 0.0, 10.0, 0.45, 1.3)
 		sons.jouer("coeur", remap(d, 0.0, 10.0, 2.0, -14.0))
+
+
+# À chaque niveau ses lampes : ce qui bouge (les meubles, les porteurs, le fantôme) passe sur la couche du niveau où il est, pour n'être
+# éclairé que par elles. Et l'on ne dessine pas les meubles des autres niveaux, sauf près de l'escalier, d'où on les voit.
+func _niveler() -> void:
+	if maison.niveaux.size() < 2:
+		return
+	var mien: int = maison.niveau_de(moi.global_position.y)
+	var pres: bool = Rect2(maison.cage).grow(7.0).has_point(Vector2(moi.global_position.x, moi.global_position.z))
+	for o in objets.values():
+		var n: int = maison.niveau_de(o.global_position.y)
+		_coucher(o, n)
+		o.visible = n == mien or pres or not o.porteurs.is_empty()
+	for j in joueurs.values():
+		_coucher(j, maison.niveau_de(j.global_position.y))
+	_coucher(chose, maison.niveau_de(chose.global_position.y))
+
+
+func _coucher(quoi: Node, n: int) -> void:
+	if quoi.get_meta("niveau", 0) == n:
+		return
+	quoi.set_meta("niveau", n)
+	var couche: int = maison.couche(n)
+	var pile: Array = [quoi]
+	while not pile.is_empty():
+		var noeud: Node = pile.pop_back()
+		if noeud is MeshInstance3D:
+			noeud.layers = couche
+		pile.append_array(noeud.get_children())
 
 
 # ce que le joueur regarde, et ce qu'il peut en faire

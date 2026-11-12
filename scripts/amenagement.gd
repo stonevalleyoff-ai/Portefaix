@@ -25,6 +25,10 @@ var _libres: Array = []           # ce qu'il faut laisser devant les portes
 var _aux_murs: Array = []         # ce qui est accroché
 var _chambres := 0
 var _horloge := false
+var lourds_n: Array = []         # le niveau de chacun des lourds
+var fixes_n: Array = []
+var _n := 0                       # le niveau de la pièce qu'on meuble
+var _y0 := 0.0                    # et la hauteur de son plancher
 var _prime := false              # on meuble une pièce bonus : ce qu'on y pose est de la prime
 
 
@@ -35,7 +39,9 @@ func amenager(maison, hasard: RandomNumberGenerator) -> void:
 		_r = Rect2(p.rect)
 		_pris = []
 		_aux_murs = []
-		_libres = m.devants_de_porte(p.rect)
+		_n = p.get("niveau", 0)
+		_y0 = m.y_de(_n)
+		_libres = m.devants_de_porte(p.rect, _n)
 		_prime = R.BONUS.has(p.type)
 		match p.type:
 			"cave":
@@ -68,6 +74,12 @@ func amenager(maison, hasard: RandomNumberGenerator) -> void:
 				_couloir()
 			"debarras":
 				_debarras()
+			"palier":
+				_palier()
+			"buanderie":
+				_buanderie()
+			"chaufferie":
+				_chaufferie()
 
 
 # --- les pièces ---
@@ -236,7 +248,7 @@ func _cave() -> void:
 		traits.append(_trait(pointes[i], pointes[(i + 2) % 5], rouge))
 	for i in 16:                                 # le cercle autour
 		traits.append(_trait(Vector2(cos(i * TAU / 16.0), sin(i * TAU / 16.0)) * rayon * 1.08, Vector2(cos((i + 1) * TAU / 16.0), sin((i + 1) * TAU / 16.0)) * rayon * 1.08, rouge))
-	decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0, "solide": false, "boites": traits})
+	decors.append({"pos": Vector3(c.x, _y0, c.y), "yaw": 0.0, "solide": false, "boites": traits})
 	var pierre := Color(0.3, 0.29, 0.31)
 	var autel := _decor_au_mur(Vector3(1.5, 0.9, 0.65), [
 		[Vector3(0, 0.4, 0), Vector3(1.3, 0.8, 0.5), pierre],
@@ -265,7 +277,7 @@ func _garage() -> void:
 	var long := _r.size.x >= _r.size.y
 	var place := Vector2(2.7, 1.5) if long else Vector2(1.5, 2.7)
 	if _r.grow(-0.5).encloses(Rect2(c - place * 0.5, place)):      # la place peinte au sol, et la tache d'huile
-		decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0 if long else PI * 0.5, "solide": false, "boites": [
+		decors.append({"pos": Vector3(c.x, _y0, c.y), "yaw": 0.0 if long else PI * 0.5, "solide": false, "boites": [
 			[Vector3(0, 0.006, -0.75), Vector3(2.7, 0.012, 0.08), jaune], [Vector3(0, 0.006, 0.75), Vector3(2.7, 0.012, 0.08), jaune],
 			[Vector3(-1.35, 0.006, 0), Vector3(0.08, 0.012, 1.58), jaune], [Vector3(0.5, 0.005, 0.2), Vector3(0.5, 0.01, 0.4), Color(0.05, 0.05, 0.06), 0.5]]})
 	_milieu("moto", 0.0 if long else PI * 0.5)
@@ -385,10 +397,51 @@ func _socle(c: Vector2, t: Vector3, boites: Array) -> Dictionary:
 	if not _libre(e, 0.3):
 		return {}
 	_pris.append([e, t.y])
-	lourds.append(e)
-	fixes.append(e)
-	decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0, "boites": boites, "solide": true})
+	_lourd(e)
+	_fixe(e)
+	decors.append({"pos": Vector3(c.x, _y0, c.y), "yaw": 0.0, "boites": boites, "solide": true})
 	return {"c": c, "yaw": 0.0, "t": t, "haut": t.y, "e": e}
+
+
+# la cage d'escalier : rien (il faut y passer avec un canapé)
+func _palier() -> void:
+	pass
+
+
+# au sous-sol : les machines, le linge
+func _buanderie() -> void:
+	_mur("machine_laver")
+	_mur("machine_laver")
+	_mur("bibliotheque")
+	for i in 3:
+		_ou_il_reste("panier")
+	_ou_il_reste("chaise")
+	_ou_il_reste("carton")
+
+
+# au sous-sol : la chaudière, qui tient à la maison, et ce qu'on a entassé autour
+func _chaufferie() -> void:
+	var fonte := Color(0.3, 0.2, 0.16)
+	_decor_au_mur(Vector3(1.2, 1.7, 0.9), [
+		[Vector3(0, 0.8, 0), Vector3(1.0, 1.6, 0.8), fonte],
+		[Vector3(0, 0.5, 0.41), Vector3(0.4, 0.4, 0.04), Color(1.0, 0.45, 0.1), 0.0, 1.5],      # le foyer
+		[Vector3(0.35, 2.0, -0.2), Vector3(0.18, 1.0, 0.18), fonte.darkened(0.3)],
+		[Vector3(-0.35, 1.2, 0.41), Vector3(0.12, 0.12, 0.04), Color(0.8, 0.8, 0.75)]])
+	_coin("tonneau")
+	for i in 4:
+		_ou_il_reste("carton")
+	_ou_il_reste("bidon")
+	_ou_il_reste("caisse_outils")
+
+
+func _lourd(e: Rect2) -> void:
+	lourds.append(e)
+	lourds_n.append(_n)
+
+
+func _fixe(e: Rect2) -> void:
+	fixes.append(e)
+	fixes_n.append(_n)
 
 
 # --- poser ---
@@ -439,11 +492,11 @@ func _libre(e: Rect2, marge: float = 0.04) -> bool:
 func _poser(type: String, c: Vector2, yaw: float, y: float = 0.0) -> Dictionary:
 	var t := _t(type)
 	var e := _emprise(c, t, yaw)
-	objets.append({"type": type, "pos": Vector3(c.x, y + t.y * 0.5 + 0.02, c.y), "yaw": yaw, "accroche": false, "bonus": _prime})
+	objets.append({"type": type, "pos": Vector3(c.x, _y0 + y + t.y * 0.5 + 0.02, c.y), "yaw": yaw, "accroche": false, "bonus": _prime})
 	if y <= 0.0:
 		_pris.append([e, t.y])
 		if R.CATALOGUE[type].masse >= R.OBJET_LEGER:
-			lourds.append(e)
+			_lourd(e)
 	return {"type": type, "c": c, "yaw": yaw, "t": t, "haut": y + t.y, "e": e}
 
 
@@ -464,12 +517,12 @@ func _mur_plein(cote: int, e: Rect2) -> bool:
 	if cote < 2:
 		var z := int(_r.position.y) - 1 if cote == 0 else int(_r.end.y)
 		for x in range(int(floor(e.position.x)), int(floor(e.end.x - 0.001)) + 1):
-			if m.lettre(x, z) != "#":
+			if m.lettre(x, z, _n) != "#":
 				return false
 	else:
 		var x := int(_r.position.x) - 1 if cote == 2 else int(_r.end.x)
 		for z in range(int(floor(e.position.y)), int(floor(e.end.y - 0.001)) + 1):
-			if m.lettre(x, z) != "#":
+			if m.lettre(x, z, _n) != "#":
 				return false
 	return true
 
@@ -597,7 +650,7 @@ func _mural(type: String, hauteur: float = 1.6) -> void:
 			if gene:
 				continue
 			_aux_murs.append(e)
-			objets.append({"type": type, "pos": Vector3(c.x, hauteur, c.y), "yaw": YAW[cote], "accroche": true, "bonus": _prime})
+			objets.append({"type": type, "pos": Vector3(c.x, _y0 + hauteur, c.y), "yaw": YAW[cote], "accroche": true, "bonus": _prime})
 			return
 
 
@@ -608,9 +661,9 @@ func _decor_au_mur(t: Vector3, boites: Array) -> Dictionary:
 	if ou.is_empty():
 		return {}
 	_pris.append([ou.e, t.y])
-	lourds.append(ou.e)
-	fixes.append(ou.e)
-	decors.append({"pos": Vector3(ou.c.x, 0.0, ou.c.y), "yaw": ou.yaw, "boites": boites, "solide": true})
+	_lourd(ou.e)
+	_fixe(ou.e)
+	decors.append({"pos": Vector3(ou.c.x, _y0, ou.c.y), "yaw": ou.yaw, "boites": boites, "solide": true})
 	return {"c": ou.c, "yaw": ou.yaw, "t": t, "haut": t.y, "e": ou.e, "cote": ou.cote, "u": ou.u}
 
 
@@ -618,5 +671,5 @@ func _tapis(c: Vector2, t: Vector2, couleur: Color) -> void:
 	var e := Rect2(c - t * 0.5, t)
 	if not _r.grow(-0.1).encloses(e):
 		return
-	decors.append({"pos": Vector3(c.x, 0.0, c.y), "yaw": 0.0, "solide": false,
+	decors.append({"pos": Vector3(c.x, _y0, c.y), "yaw": 0.0, "solide": false,
 		"boites": [[Vector3(0, 0.008, 0), Vector3(t.x, 0.016, t.y), couleur], [Vector3(0, 0.012, 0), Vector3(t.x - 0.3, 0.016, t.y - 0.3), couleur.lightened(0.15)]]})

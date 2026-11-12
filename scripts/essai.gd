@@ -139,8 +139,9 @@ func _maisons() -> void:
 		portes_min = mini(portes_min, m.portes.size())
 		for z in m.profondeur:
 			for x in m.largeur:
-				if m.plan[z][x] != "#" and m.grille.get_id_path(m.case_de(m.seuil), Vector2i(x, z)).is_empty():
-					jointes = false
+				for n in m.niveaux:
+					if m.plans[n][z][x] in [".", "D", "P"] and m.chemin(m.seuil, m.centre(Vector2i(x, z), n)).is_empty():
+						jointes = false
 		var vus := {}
 		for p in m.pieces:
 			vus[p.type] = true
@@ -148,16 +149,17 @@ func _maisons() -> void:
 		var types := {}
 		for o in a.objets:
 			types[o.type] = true
-			rangees = rangees and m.dedans(o.pos) and m.lettre(int(o.pos.x), int(o.pos.z)) == "."
-			if not o.accroche and o.pos.y < 1.0:            # rien au sol devant une porte
+			rangees = rangees and m.dedans(o.pos) and m.lettre(int(o.pos.x), int(o.pos.z), m.niveau_de(o.pos.y)) == "."
+			var no: int = m.niveau_de(o.pos.y)
+			if not o.accroche and o.pos.y - m.y_de(no) < 1.0:            # rien au sol devant une porte
 				for p in m.pieces:
-					for libre in m.devants_de_porte(p.rect):
-						if libre.grow(-0.05).has_point(Vector2(o.pos.x, o.pos.z)):
+					for libre in m.devants_de_porte(p.rect, p.niveau):
+						if p.niveau == no and libre.grow(-0.05).has_point(Vector2(o.pos.x, o.pos.z)):
 							portes_libres = false
 		meublees = meublees and types.has("canape") and types.has("lit") and types.has("table") and types.has("frigo") and types.has("tele") and types.has("tableau")
-		m.encombrer(a.lourds)
-		for e in a.lourds:
-			if e.grow(0.25).has_point(Vector2(m.taniere.x, m.taniere.z)):
+		m.encombrer(a.lourds, a.fixes, a.lourds_n, a.fixes_n)
+		for i in a.lourds.size():
+			if a.lourds_n[i] == m.niveau_de(m.taniere.y) and a.lourds[i].grow(0.25).has_point(Vector2(m.taniere.x, m.taniere.z)):
 				antres = false
 		moins = mini(moins, a.objets.size())
 		plus = maxi(plus, a.objets.size())
@@ -229,7 +231,7 @@ func _bonus(Maison, Amenagement) -> void:
 				types[o.type] = true
 			else:
 				reste += R.CATALOGUE[o.type].valeur
-			rangees = rangees and m.dedans(o.pos) and m.lettre(int(o.pos.x), int(o.pos.z)) == "."
+			rangees = rangees and m.dedans(o.pos) and m.lettre(int(o.pos.x), int(o.pos.z), m.niveau_de(o.pos.y)) == "."
 		riches = riches and prime >= 3000 and reste >= 3000
 		for b in m.bonus:
 			essayees += 1
@@ -240,11 +242,12 @@ func _bonus(Maison, Amenagement) -> void:
 					manques["%s sans %s (graine %d)" % [b, t, graine]] = true
 			if complet:
 				pleines += 1
-		m.encombrer(a.lourds, a.fixes)
+		m.encombrer(a.lourds, a.fixes, a.lourds_n, a.fixes_n)
 		for z in m.profondeur:
 			for x in m.largeur:
-				if m.plan[z][x] != "#" and m.grille.get_id_path(m.case_de(m.seuil), Vector2i(x, z)).is_empty():
-					jointes = false
+				for n in m.niveaux:
+					if m.plans[n][z][x] in [".", "D", "P"] and m.chemin(m.seuil, m.centre(Vector2i(x, z), n)).is_empty():
+						jointes = false
 		m.free()
 	if not manques.is_empty():
 		print("     (", ", ".join(manques.keys().slice(0, 6)), ")")
@@ -783,8 +786,138 @@ func _seul() -> void:
 	jeu.tuer(1)
 	await _attendre(0.2)
 	jeu.bonus_voulu = []
+	await _etages()
 	jeu.retour_menu()
 	verif(jeu.etat == jeu.MENU and jeu.monde == null and jeu.joueurs.is_empty(), "et l'on revient au menu")
+
+
+# faire marcher un porteur pour de bon (ses jambes, la pesanteur), droit vers l'est ou l'ouest, jusqu'à cette abscisse ; vrai s'il y arrive
+func _avancer(j, sens: float, jusque: float, delai: float = 8.0) -> bool:
+	j.pilote = false
+	j.yaw = -PI * 0.5 * sens
+	j.pitch = 0.0
+	var t0 := Time.get_ticks_msec()
+	while (j.global_position.x - jusque) * sens < 0.0 and Time.get_ticks_msec() - t0 < delai * 1000.0:
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		await get_tree().physics_frame
+	jeu.tactile.vecteur = Vector2.ZERO
+	await _images(20)
+	return (j.global_position.x - jusque) * sens >= 0.0
+
+
+# attendre que le fantôme soit à ce niveau, près de ce point ; en chemin, noter s'il est passé par les marches
+func _suivre(vers: Vector3, delai: float) -> Array:
+	var chose = jeu.chose
+	var marches := false
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < delai * 1000.0:
+		marches = marches or jeu.maison.escalier_sous(chose.global_position) != null
+		if absf(chose.global_position.y - vers.y) < 0.2 and Vector2(chose.global_position.x - vers.x, chose.global_position.z - vers.z).length() < 1.6:
+			return [true, marches, (Time.get_ticks_msec() - t0) / 1000.0]
+		await get_tree().physics_frame
+	return [false, marches, delai]
+
+
+func _etages() -> void:
+	print("13. L'étage et le sous-sol")
+	jeu.etages_voulus = true
+	jeu.lancer()
+	await _attendre(0.5)
+	jeu.repit = 1e9
+	jeu.chat.reste = 1e9
+	var m = jeu.maison
+	var moi = jeu.moi
+	var H: float = m.PAS
+	var par := {-1: 0, 0: 0, 1: 0}
+	var objets := {-1: 0, 0: 0, 1: 0}
+	for p in m.pieces:
+		if not p.type in ["couloir", "palier"]:
+			par[p.niveau] += 1
+	for o in jeu.objets.values():
+		objets[m.niveau_de(o.global_position.y)] += 1
+	verif(m.niveaux == [-1, 0, 1] and par[1] >= 4 and par[-1] >= 2 and m.escaliers.size() == 2,
+		"la maison d'essai, avec un étage (%d pièces) et un sous-sol (%d pièces), et deux escaliers au bout du couloir" % [par[1], par[-1]])
+	verif(objets[1] >= 30 and objets[-1] >= 10 and objets[0] >= 60, "meublés : %d objets à l'étage, %d au rez-de-chaussée, %d au sous-sol" % [objets[1], objets[0], objets[-1]])
+	var joints := true
+	var cases := 0
+	for n in m.niveaux:
+		for z in m.profondeur:
+			for x in m.largeur:
+				if m.plans[n][z][x] in [".", "D", "P"]:
+					cases += 1
+					joints = joints and not m.chemin(m.seuil, m.centre(Vector2i(x, z), n)).is_empty()
+	verif(joints, "les %d cases de sol des trois niveaux se rejoignent depuis l'entrée, par les escaliers" % cases)
+	var places := {}
+	for o in jeu.objets.values():
+		places[o.id] = o.global_position
+	await _attendre(1.5)
+	var bouge := 0.0
+	var intacts := true
+	for o in jeu.objets.values():
+		bouge = maxf(bouge, o.global_position.distance_to(places[o.id]))
+		intacts = intacts and o.valeur == o.valeur_neuve
+	verif(bouge < 0.15 and intacts, "à chaque niveau, les meubles restent où on les a posés : les planchers tiennent (le plus remuant a bougé de %d cm)" % int(bouge * 100))
+	var lit = null
+	for o in jeu.objets.values():
+		if o.type == "lit" and m.niveau_de(o.global_position.y) == 1:
+			lit = o
+	verif(lit != null and absf(lit.global_position.y - (H + lit.taille.y * 0.5)) < 0.06, "un lit, à l'étage, sur son plancher (%.2f m plus haut)" % H)
+	# monter, pour de bon
+	var monte: Dictionary = m.escaliers[0]
+	var descend: Dictionary = m.escaliers[1]
+	moi.global_position = monte.bas + Vector3(-0.5, 0.05, 0.0)
+	moi.velocity = Vector3.ZERO
+	await _images(10)
+	var arrive: bool = await _avancer(moi, 1.0, monte.haut.x)
+	verif(arrive and absf(moi.global_position.y - H) < 0.1 and moi.is_on_floor(), "le porteur monte les marches à pied, jusqu'au palier de l'étage (%.2f m)" % moi.global_position.y)
+	jeu._niveler()
+	verif(moi.get_meta("niveau", 0) == 1 and lit.visible, "là-haut, ce sont les lampes de l'étage qui l'éclairent")
+	arrive = await _avancer(moi, -1.0, monte.bas.x)
+	verif(arrive and absf(moi.global_position.y) < 0.1, "et les redescend (%.2f m)" % moi.global_position.y)
+	moi.global_position = descend.haut + Vector3(-0.5, 0.05, 0.0)
+	moi.velocity = Vector3.ZERO
+	await _images(10)
+	arrive = await _avancer(moi, 1.0, descend.bas.x)
+	verif(arrive and absf(moi.global_position.y + H) < 0.1, "l'autre volée le mène au sous-sol (%.2f m)" % moi.global_position.y)
+	moi.global_position = Vector3(3.0, -H + 0.05, m.cage.position.y + 2.0)
+	jeu._niveler()
+	verif(not lit.visible, "d'en bas, loin de l'escalier, on ne dessine plus les meubles de l'étage")
+	# un carton lâché en haut des marches : il les dévale
+	var carton = _trouver("carton")
+	_mettre(carton, monte.haut + Vector3(-1.6, 0.5, 0.0))
+	await _attendre(3.0)
+	verif(carton.global_position.y < H - 0.5 and m.escalier_sous(carton.global_position) != null or carton.global_position.y < 0.5,
+		"un carton lâché en haut des marches les dévale (il est à %.1f m)" % carton.global_position.y)
+	_mettre(carton, Vector3(3.0, 0.3, m.profondeur + 3.0))
+	# le fantôme, d'un niveau à l'autre
+	_pilote(moi)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 6.0)
+	var chose = jeu.chose
+	chose.reveiller()
+	chose._repue = 0.0
+	chose.global_position = Vector3(m.cage.position.x - 6.0, 0.0, m.cage.position.y + 2.0)
+	var la_haut: Vector3 = m.centre(Vector2i(4, m.cage.position.y + 2), 1)
+	chose.entendre(la_haut, 200.0)
+	var suivi: Array = await _suivre(la_haut, 40.0)
+	verif(suivi[0] and suivi[1], "un bruit à l'étage : le fantôme prend l'escalier et y monte (en %.0f s)" % suivi[2])
+	var en_bas: Vector3 = m.centre(Vector2i(4, m.cage.position.y + 2), -1)
+	chose._interet = 0.0
+	chose.entendre(en_bas, 200.0)
+	suivi = await _suivre(en_bas, 70.0)
+	verif(suivi[0] and suivi[1], "un bruit au sous-sol : il redescend les deux volées (en %.0f s)" % suivi[2])
+	# juste au-dessus de lui, on est à l'abri de ses yeux et de ses coups
+	chose._roder(60.0)
+	chose._repue = 0.0
+	moi.global_position = Vector3(chose.global_position.x, 0.05, chose.global_position.z - 1.0)
+	chose.rotation.y = 0.0
+	await _attendre(0.6)
+	verif(chose.mode == chose.RODE and moi.vivant and not moi.blesse, "un porteur juste au-dessus de lui, au rez-de-chaussée : il ne le voit pas à travers le plancher")
+	moi.global_position = chose.global_position + Vector3(0.0, 0.05, -1.5)
+	await _attendre(0.6)
+	verif(chose.mode == chose.ALERTE, "au même niveau, devant lui, si")
+	jeu.tuer(1)
+	await _attendre(0.2)
+	jeu.etages_voulus = false
 
 
 # --- le réseau : l'hôte ---
