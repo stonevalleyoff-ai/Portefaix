@@ -481,22 +481,67 @@ func _seul() -> void:
 	verif(chose.mode == chose.ENQUETE and chose._vitesse_vue > R.CHOSE_RODE and chose._vitesse_vue < R.MARCHE and chose.global_position.x > 10.5,
 		"un bruit au fond du couloir : il y va d'un pas pressé (%.1f m/s), sans courir" % chose._vitesse_vue)
 	verif(chose._os["epaule_g"].rotation.x > 0.35 and chose._os["epaule_d"].rotation.x > 0.35, "les bras tendus devant lui : il tâtonne")
+	# l'encadrement d'une porte : du couloir à la chambre, par sa porte
+	poser.call(couloir, Vector3(4.0, 0.0, 6.5))
+	chose.entendre(Vector3(4.5, 0.0, 3.5), 14.0)
+	var a_bute := false
+	t0 = Time.get_ticks_msec()
+	while chose.global_position.z > 5.6 and Time.get_ticks_msec() - t0 < 7000:
+		a_bute = a_bute or chose.bute
+		await get_tree().physics_frame
+	verif(chose.global_position.z <= 5.6 and not a_bute, "il passe l'encadrement d'une porte, du couloir à la chambre, sans buter (en %.1f s)" % ((Time.get_ticks_msec() - t0) / 1000.0))
+	# une armoire dans le couloir, qui en laisse la moitié : il la contourne
+	# (dans le bout de couloir sans porte ni ouverture, de x = 14 à 21 : il n'y a qu'un côté où passer)
+	_mettre(armoire, Vector3(17.5, 1.02, 7.62))
+	armoire.rotation.y = PI * 0.5                       # (dos au mur du nord : elle prend le couloir de 7 à 8,2 ; il reste 80 cm au sud)
+	await _attendre(0.8)
+	poser.call(Vector3(14.0, 0.0, 7.25), fond)
+	chose.entendre(Vector3(20.5, 0.0, 7.25), 14.0)
+	a_bute = false
+	var sud := 0.0
+	t0 = Time.get_ticks_msec()
+	while chose.global_position.x < 19.5 and Time.get_ticks_msec() - t0 < 8000:
+		a_bute = a_bute or chose.bute
+		if absf(chose.global_position.x - 17.5) < 0.6:
+			sud = maxf(sud, chose.global_position.z)
+		await get_tree().physics_frame
+	verif(chose.global_position.x >= 19.5 and not a_bute and sud > 8.3, "une armoire dans le couloir : il la contourne par le côté libre, sans buter (il passe à z = %.1f)" % sud)
+	# et s'il la trouve devant lui en chemin : on la pousse de l'autre côté pendant qu'il arrive
+	_mettre(armoire, loin)
+	await _attendre(0.4)
+	poser.call(Vector3(14.0, 0.0, 8.5), fond)
+	chose.entendre(Vector3(20.5, 0.0, 8.5), 14.0)
+	a_bute = false
+	var nord := 99.0
+	var posee := false
+	t0 = Time.get_ticks_msec()
+	while chose.global_position.x < 19.5 and Time.get_ticks_msec() - t0 < 9000:
+		if not posee and chose.global_position.x > 14.8:  # il vient par le sud : l'armoire tombe là, au sud, à moins de trois mètres devant lui
+			posee = true
+			_mettre(armoire, Vector3(17.5, 1.02, 8.38))
+			armoire.rotation.y = PI * 0.5
+		a_bute = a_bute or chose.bute
+		if absf(chose.global_position.x - 17.5) < 0.6:
+			nord = minf(nord, chose.global_position.z)
+		await get_tree().physics_frame
+	verif(posee and chose.global_position.x >= 19.5 and not a_bute and nord < 7.7, "une armoire poussée devant lui pendant qu'il marche : il change de côté, sans buter (il passe à z = %.1f)" % nord)
+	_mettre(armoire, loin)
 	_mettre(canape, Vector3(13.5, 0.45, 8.0))           # un canapé en travers du couloir : il le barre d'un mur à l'autre
 	canape.rotation.y = PI * 0.5
 	await _attendre(0.8)
 	var place: Vector3 = canape.global_position
 	poser.call(couloir, fond)
 	chose.entendre(Vector3(20.0, 0.0, 7.5), 14.0)
-	var a_bute := false
+	a_bute = false
+	var passe := false               # est-il de l'autre côté du canapé, dans le couloir ?
 	t0 = Time.get_ticks_msec()
-	while Time.get_ticks_msec() - t0 < 5000:
+	while (chose.mode == chose.ENQUETE or Time.get_ticks_msec() - t0 < 1000) and Time.get_ticks_msec() - t0 < 12000:
 		a_bute = a_bute or chose.bute
+		passe = passe or (chose.global_position.x > 14.0 and chose.global_position.z > 7.0 and chose.global_position.z < 9.0)
 		await get_tree().physics_frame
-	verif(a_bute and chose.global_position.x < 13.2 and canape.global_position.distance_to(place) < 0.25, "un canapé en travers du couloir l'arrête : il bute dessus, et cogne (resté à x = %.1f)" % chose.global_position.x)
-	t0 = Time.get_ticks_msec()
-	while chose.mode == chose.ENQUETE and Time.get_ticks_msec() - t0 < 9000:
-		await get_tree().physics_frame
-	verif(chose.mode == chose.RODE and chose.global_position.x < 13.2, "faute d'autre passage, il renonce")
+	verif(not passe and canape.global_position.distance_to(place) < 0.25, "un canapé en travers du couloir, d'un mur à l'autre : il ne le passe pas, et ne le pousse pas")
+	verif(a_bute and not chose._atteint, "faute de passage, il va au plus près du bruit, et cogne contre ce qui l'en sépare")
+	verif(chose.mode == chose.RODE, "puis il renonce")
 	_mettre(canape, loin + Vector3(4, 0, 0))
 	_mettre(petit, Vector3(11.5, 0.25, 7.5))             # un carton, lui, ne pèse pas assez
 	await _attendre(0.6)

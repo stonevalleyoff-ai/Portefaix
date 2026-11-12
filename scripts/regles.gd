@@ -67,6 +67,7 @@ const CHOSE_VUE_ACCROUPI := 0.5
 const CHOSE_CONE := 0.6       # droit devant lui : le cosinus du demi-angle (53° de chaque côté)…
 const CHOSE_PRES := 1.5       # … et il sent ce qui est tout contre lui, même dans son dos
 const CHOSE_ELAN := 7.0       # il prend sa vitesse peu à peu (m/s²)
+const CHOSE_CARTE := 0.35     # tous les combien il regarde où sont les meubles, et refait son chemin autour
 const CHOSE_BLOCAGE := 0.6    # s'il piétine tout ce temps, c'est qu'un meuble lui barre le passage : il bute
 const CHOSE_BUTEES := 4       # à force de buter sans trouver d'autre passage, il renonce
 const CHOSE_ALERTE := 1.8     # quand elle voit un porteur, elle crie tout ce temps avant de s'élancer

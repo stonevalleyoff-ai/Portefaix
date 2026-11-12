@@ -400,7 +400,7 @@ func _meubler(graine: int) -> void:
 	a.amenager(maison, h)
 	for d in a.decors:
 		maison.ajouter_decor(d)
-	maison.encombrer(a.lourds)
+	maison.encombrer(a.lourds, a.fixes)
 	total = 0
 	for d in a.objets:
 		var o := Objet.new()

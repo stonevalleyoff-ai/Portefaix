@@ -3,8 +3,10 @@ extends CharacterBody3D
 # Il dort dans la pièce la plus loin de l'entrée, puis rôde. Il n'y voit presque pas : quelques mètres, droit devant lui, et un meuble
 # haut suffit à le lui cacher. Mais il entend tout : un bruit assez fort et assez près, il va voir, en tâtonnant.
 # Il marche quand il rôde, presse le pas quand il cherche, et court quand il chasse : plus vite qu'on ne marche, moins qu'on ne court,
-# et pas longtemps. Il a un corps : les meubles lourds l'arrêtent. Il bute, cogne, cherche un autre passage par une autre porte ; s'il
-# n'y en a pas, il renonce. Un canapé en travers d'un couloir le tient donc dehors ; un carton, non.
+# et pas longtemps. Il a un corps : les meubles lourds l'arrêtent. Il les contourne : il tient une carte fine de la maison (une case
+# par demi-mètre), où il reporte plusieurs fois par seconde les meubles là où ils sont à cet instant, et refait son chemin autour, y
+# compris de ce qu'on vient de pousser devant lui. Si rien ne passe, il va au plus près, cogne, et renonce. Un canapé en travers d'un
+# couloir le tient donc dehors ; un carton, non.
 # Quand il voit un porteur, il crie d'abord. Son premier coup blesse, le suivant tue. Il ne sort pas de la maison.
 # L'hôte seul le fait penser et marcher ; les autres le voient où l'hôte dit qu'il est. Chacun l'anime chez soi, d'après ce qu'il fait.
 
@@ -37,7 +39,13 @@ var _trajet := 0.0                # ce qu'il a parcouru depuis le dernier contr�
 var _t_bloc := 0.0
 var _butees := 0                  # combien de fois de suite il a buté
 var _t_bute := 0.0
-var _evite := {}                  # les cases où il a buté → jusqu'à quand il les contourne
+var _evite := {}                  # les cases (fines) où il a buté → jusqu'à quand il les contourne
+var _carte := AStarGrid2D.new()   # sa carte fine : les murs, ce qui tient à la maison, les portes claquées, les meubles lourds
+var _durs := {}                   # ce qui ne bouge pas sur cette carte : les murs, ce qui tient à la maison
+var _t_carte := 0.0
+var _atteint := true              # son chemin va-t-il jusqu'au but, ou seulement au plus près ?
+
+const PAS := 0.5                  # le côté d'une case de sa carte
 var _son: AudioStreamPlayer3D
 # le corps, pour l'animer
 var _os := {}                     # le nom d'une articulation → son pivot
@@ -64,10 +72,12 @@ func preparer(p) -> void:
 	var forme := CollisionShape3D.new()
 	var c := CapsuleShape3D.new()
 	c.radius = 0.28
-	c.height = 2.0
-	forme.shape = c
-	forme.position.y = 1.25              # (au-dessus du sol : il ne s'y accroche pas)
+	c.height = 1.7                       # (de 0,3 m à 2 m : au-dessus du sol, où il ne s'accroche pas, et sous les linteaux des
+	forme.shape = c                      # portes, à 2,2 m ; plus haut, il restait coincé dans leur encadrement)
+	forme.position.y = 1.15
 	add_child(forme)
+	if principal.serveur:
+		_dresser_carte()
 	_faire_corps()
 	_son = AudioStreamPlayer3D.new()
 	_son.stream = principal.sons.boucle("grogne")
@@ -278,7 +288,7 @@ func avancer(dt: float) -> void:
 					_vers(j.global_position, vitesse, dt)
 		ENQUETE:
 			vitesse = R.CHOSE_ENQUETE
-			if _i >= route.size():
+			if _i >= route.size() and _t_bute <= 0.0:
 				_roder(2.5)
 		RODE:
 			if _repue > 0.0:                   # (il rentre d'un bon pas)
@@ -291,8 +301,19 @@ func avancer(dt: float) -> void:
 					_aller(maison.case_au_hasard(principal.hasard))
 	if _i < route.size():
 		_veut = true
-		if _vers(route[_i], vitesse, dt):
+		# les meubles ont pu bouger : il regarde, et refait son chemin autour
+		_t_carte -= dt
+		if _t_carte <= 0.0:
+			_aller(_destination)
+		# il coupe au plus court tant que la voie est libre : il ne marche pas de case en case
+		for k in 3:
+			if _i + 1 < route.size() and _degage(global_position, route[_i + 1]):
+				_i += 1
+		if _i < route.size() and _vers(route[_i], vitesse, dt):
 			_i += 1
+			if _i >= route.size() and not _atteint and mode != CHASSE:
+				_t_bute = 1.3                  # au bout d'un chemin qui ne passe pas : il cogne contre ce qui le barre
+				principal.son_a.rpc("choc", global_position + Vector3.UP, -2.0)
 	if not _veut:
 		_allure = 0.0
 		_t_bloc = 0.0
@@ -316,7 +337,7 @@ func _buter() -> void:
 	_allure = 0.0
 	principal.son_a.rpc("choc", global_position + Vector3.UP, -2.0)
 	if _i < route.size():
-		_evite[maison.case_de(route[_i])] = Time.get_ticks_msec() + 10000
+		_evite[_case(route[_i])] = Time.get_ticks_msec() + 6000
 	if _butees >= R.CHOSE_BUTEES:
 		_butees = 0
 		_repue = 3.0
@@ -346,28 +367,132 @@ func rentrer() -> void:
 	_aller(maison.taniere)
 
 
-# il ne sort pas de la maison : ce qui l'appelle dehors l'amène au seuil, pas plus loin. Il contourne les cases où il vient de buter.
-func _aller(ou: Vector3) -> void:
-	_destination = ou
+# --- sa carte, et ses chemins ---
+
+func _case(p: Vector3) -> Vector2i:
+	return Vector2i(clampi(int(floor(p.x / PAS)), 0, maison.largeur * 2 - 1), clampi(int(floor(p.z / PAS)), 0, maison.profondeur * 2 - 1))
+
+
+func _milieu(c: Vector2i) -> Vector3:
+	return Vector3((c.x + 0.5) * PAS, 0.0, (c.y + 0.5) * PAS)
+
+
+# les cases dont le milieu est dans ce rectangle
+func _cases_de(r: Rect2) -> Array:
+	var cases: Array = []
+	for z in range(int(floor(r.position.y / PAS)), int(floor(r.end.y / PAS)) + 1):
+		for x in range(int(floor(r.position.x / PAS)), int(floor(r.end.x / PAS)) + 1):
+			var c := Vector2i(x, z)
+			if _carte.is_in_boundsv(c) and r.has_point(Vector2((x + 0.5) * PAS, (z + 0.5) * PAS)):
+				cases.append(c)
+	return cases
+
+
+# une fois : ce qui ne bougera pas
+func _dresser_carte() -> void:
+	_carte.region = Rect2i(0, 0, maison.largeur * 2, maison.profondeur * 2)
+	_carte.cell_size = Vector2(PAS, PAS)
+	_carte.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	_carte.update()
+	for z in maison.profondeur:
+		for x in maison.largeur:
+			if maison.plan[z][x] == "#":
+				for c in _cases_de(Rect2(x, z, 1.0, 1.0)):
+					_durs[c] = true
+	for e in maison.fixes:
+		for c in _cases_de(e.grow(0.2)):
+			_durs[c] = true
+	_reporter()
+
+
+# plusieurs fois par seconde : où sont les meubles lourds, là, maintenant ; les portes claquées ; les cases où il vient de buter
+func _reporter() -> void:
+	_t_carte = R.CHOSE_CARTE
+	_carte.fill_solid_region(_carte.region, false)
+	for c in _durs:
+		_carte.set_point_solid(c, true)
+	for porte in maison.portes:
+		if porte.verrou:
+			var boite: Vector3 = porte.forme.shape.size
+			for c in _cases_de(Rect2(porte.centre.x - boite.x * 0.5, porte.centre.z - boite.z * 0.5, boite.x, boite.z).grow(0.2)):
+				_carte.set_point_solid(c, true)
+	for o in principal.objets.values():
+		if o.collision_layer != R.COUCHE_OBJETS:
+			continue                       # (trop léger : il passe au travers)
+		var base: Basis = o.global_transform.basis
+		var demi: Vector3 = o.taille * 0.5
+		var etendue := base.x.abs() * demi.x + base.y.abs() * demi.y + base.z.abs() * demi.z       # la boîte qui l'entoure, dans le monde
+		var p: Vector3 = o.global_position
+		if p.y - etendue.y > 2.0 or p.y + etendue.y < 0.3:
+			continue                       # (au-dessus de sa tête, ou sous ses pieds)
+		var debout := absf(base.y.y) > 0.9
+		var envers: Transform3D = o.global_transform.affine_inverse()
+		for c in _cases_de(Rect2(p.x - etendue.x, p.z - etendue.z, etendue.x * 2.0, etendue.z * 2.0).grow(0.22)):
+			if debout:                     # posé droit : sa vraie place au sol, tourné comme il l'est
+				var dans: Vector3 = envers * Vector3((c.x + 0.5) * PAS, p.y, (c.y + 0.5) * PAS)
+				if absf(dans.x) > demi.x + 0.22 or absf(dans.z) > demi.z + 0.22:
+					continue
+			_carte.set_point_solid(c, true)
 	var maintenant := Time.get_ticks_msec()
-	var ici: Vector2i = maison.case_de(global_position)
-	var fermees: Array = []
 	for c in _evite.keys():
 		if _evite[c] < maintenant:
 			_evite.erase(c)
-		elif c != ici and not maison.grille.is_point_solid(c):
-			maison.grille.set_point_solid(c, true)
-			fermees.append(c)
-	route = maison.chemin(global_position, ou if maison.dedans(ou) else maison.seuil)
-	for c in fermees:
-		maison.grille.set_point_solid(c, false)
+		else:
+			_carte.set_point_solid(c, true)
+
+
+# une case libre, la plus près de celle-ci
+func _libre_pres(c: Vector2i) -> Vector2i:
+	if not _carte.is_point_solid(c):
+		return c
+	for r in range(1, 5):
+		var mieux := c
+		var pres := 1e9
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var v := Vector2i(c.x + dx, c.y + dz)
+				if _carte.is_in_boundsv(v) and not _carte.is_point_solid(v) and Vector2(dx, dz).length() < pres:
+					pres = Vector2(dx, dz).length()
+					mieux = v
+		if pres < 1e8:
+			return mieux
+	return c
+
+
+# il ne sort pas de la maison : ce qui l'appelle dehors l'amène au seuil, pas plus loin. Son chemin contourne les meubles ; si rien ne
+# passe, il va au plus près.
+func _aller(ou: Vector3) -> void:
+	_destination = ou
+	_reporter()
+	var a := _libre_pres(_case(global_position))
+	var b := _libre_pres(_case(ou if maison.dedans(ou) else maison.seuil))
+	var cases := _carte.get_id_path(a, b, true)
+	route = PackedVector3Array()
+	for c in cases:
+		route.append(_milieu(c))
+	_atteint = not cases.is_empty() and cases[cases.size() - 1] == b
 	_i = 1 if route.size() > 1 else 0     # la première case est celle où il est
+
+
+# de là à là, tout droit, la voie est-elle libre ? (de quoi couper les angles de son chemin, sans frôler un meuble)
+func _degage(de: Vector3, vers: Vector3) -> bool:
+	var d := Vector3(vers.x - de.x, 0.0, vers.z - de.z)
+	var l := d.length()
+	if l < 0.05:
+		return true
+	var cote := Vector3(-d.z, 0.0, d.x) / l * 0.24
+	var n := int(ceil(l / 0.2))
+	for k in range(1, n + 1):
+		var p := de + d * (float(k) / n)
+		if _carte.is_point_solid(_case(p + cote)) or _carte.is_point_solid(_case(p - cote)):
+			return false
+	return true
 
 
 # un pas vers un point ; vrai quand il y est. Il prend de la vitesse peu à peu, et glisse le long de ce qui le gêne.
 func _vers(p: Vector3, vitesse: float, dt: float) -> bool:
 	var d := Vector3(p.x - global_position.x, 0.0, p.z - global_position.z)
-	if d.length() < 0.25:
+	if d.length() < 0.2:
 		return true
 	_allure = move_toward(_allure, vitesse, R.CHOSE_ELAN * dt)
 	velocity = d.normalized() * minf(_allure, d.length() / dt)
@@ -459,7 +584,10 @@ func _poser(dt: float) -> void:
 	_pose["genou_g"] = Vector3(-maxf(0.0, cos(_phase)) * ampleur * 1.5 - 0.05, 0, 0)
 	_pose["genou_d"] = Vector3(-maxf(0.0, -cos(_phase)) * ampleur * 1.5 - 0.05, 0, 0)
 	# le tronc : voûté ; il se penche pour courir, et se balance quand il ne bouge pas
-	var penche := lerpf(0.16, 0.5, court) + (0.14 if mode == ENQUETE else 0.0)
+	var porte := 0.0                    # sous un linteau, il se baisse
+	if maison.lettre(int(floor(global_position.x)), int(floor(global_position.z))) in ["D", "P"]:
+		porte = 1.0
+	var penche := lerpf(0.16, 0.5, court) + (0.14 if mode == ENQUETE else 0.0) + 0.35 * porte
 	_pose["torse"] = Vector3(-penche, sin(t * 0.7) * 0.06 * (1.0 - marche), sin(_phase) * 0.05 * marche + sin(t * 0.9) * 0.03)
 	_pose["cou"] = Vector3(penche * 0.5, 0, 0)
 	# la tête : il ne voit presque rien, alors il la tourne, il écoute
@@ -513,7 +641,7 @@ func _poser(dt: float) -> void:
 			continue
 		n.rotation = n.rotation.lerp(_pose[nom], k)
 	# le bassin monte et descend à chaque pas, et s'abaisse quand il court
-	_os["bassin"].position.y = lerpf(_os["bassin"].position.y, 1.15 - 0.05 * absf(s) * marche - 0.1 * court, k)
+	_os["bassin"].position.y = lerpf(_os["bassin"].position.y, 1.15 - 0.05 * absf(s) * marche - 0.1 * court - 0.22 * porte, k)
 	# les lambeaux traînent derrière lui, et flottent
 	for i in _lambeaux.size():
 		var l: Node3D = _lambeaux[i]

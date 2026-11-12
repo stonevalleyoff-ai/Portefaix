@@ -56,6 +56,7 @@ var lampes: Array = []            # {lumiere: OmniLight3D, ampoule: MeshInstance
 var eclairee := true
 var _decor: StaticBody3D
 var _antre := Rect2i()            # la pièce de la tanière
+var fixes: Array = []             # la place au sol de ce qui tient à la maison (une baignoire, un plan de travail)
 var _mats := {}
 
 
@@ -580,7 +581,8 @@ func _tanier() -> void:
 
 # la maison meublée : là où pèsent des meubles, le fantôme passe mal. Ses chemins préfèrent les cases dégagées (il butera quand même
 # sur ce qu'on aura déplacé), et sa tanière est une case libre de sa pièce : il ne se réveille pas coincé dans une table.
-func encombrer(lourds: Array) -> void:
+func encombrer(lourds: Array, tiennent: Array = []) -> void:
+	fixes = tiennent
 	var prises := {}
 	for e in lourds:
 		var large: Rect2 = e.grow(0.3)

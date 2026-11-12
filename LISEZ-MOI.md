@@ -59,7 +59,8 @@ outils/godot.sh --path .
   - Il **n'y voit presque pas** : 4,5 m, droit devant lui (moitié moins si l'on est accroupi), et il sent ce qui est à moins de 1,5 m. Un meuble haut entre lui et un porteur suffit à le cacher.
   - Mais il **entend tout** : un bruit qui porte jusqu'à lui, il y va, d'un pas pressé, les bras tendus devant lui, en tâtonnant.
   - Il **marche** quand il rôde, **presse le pas** quand il cherche, **court** quand il chasse : plus vite qu'on ne marche, moins qu'on ne court, pas plus de 10 secondes d'une traite. Il renonce s'il ne voit plus sa proie pendant 2,5 secondes.
-  - Il a un corps : **les meubles lourds l'arrêtent** (12 kg et plus). Il bute, cogne des deux bras, puis cherche un passage par une autre porte ; s'il n'y en a pas, il renonce. Un canapé en travers d'un couloir, une armoire dans une porte le tiennent dehors ; un carton ou un vase, non. Une porte claquée par le chat l'arrête aussi.
+  - Il a un corps : **les meubles lourds l'arrêtent** (12 kg et plus), et **il les contourne**. Il tient une carte fine de la maison, où il reporte trois fois par seconde les meubles là où ils sont à cet instant, et refait son chemin autour, y compris de ce qu'on vient de pousser devant lui. Un carton ou un vase ne comptent pas : il passe au travers.
+  - Si rien ne passe (un canapé en travers d'un couloir, d'un mur à l'autre ; une armoire dans une porte ; une porte claquée par le chat), il va **au plus près** du bruit, cogne des deux bras contre ce qui l'en sépare, et renonce. On peut donc se barricader.
   - Quand il voit un porteur, il **crie près de deux secondes** avant de s'élancer : c'est le moment de fuir.
   - Il **ne sort pas de la maison** : la cour est sûre.
   - Son **premier coup blesse** sans tuer, puis il rentre à sa tanière. La blessure guérit en 45 secondes ; blessé, le coup suivant tue.
@@ -136,7 +137,7 @@ node outils/essai-pwa.js site
 
 ## Où en est le prototype
 
-- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (101 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
+- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (105 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
 - **Vérifié dans Chromium, l'application installable** : l'essai passe (11 vérifications) : le manifeste et ses icônes, le service worker qui s'installe et garde le jeu entier, le jeu relancé et joué seul réseau coupé.
 - **Vérifié dans Chromium** (WebGL 2, un téléphone émulé de 844 sur 390, de vrais touchers) : l'export web se charge, le menu passe au doigt, une partie commence, le joystick fait marcher jusque dans le salon, le pouce droit tourne le regard pendant qu'on marche, « Courir » reste enfoncé, « Torche » éteint la lampe. Deux pouces à la fois : le gauche tenant le joystick, le droit glisse et revient sans que la vue saute, puis glisse et la vue tourne.
 - **Vérifié dans trois Chromium à la fois** : l'essai en ligne passe (28 vérifications). Et les fonctions du salon, dans un Postgres local : les codes, six porteurs au plus, la nuit commencée fermée aux nouveaux, le ménage des vieux salons, tout refusé sans compte.
