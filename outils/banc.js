@@ -92,7 +92,12 @@ verif(nombre('BRAS_TENDU') > 1.5 && nombre('BRAS_MAX') > nombre('BRAS_TENDU') + 
 const sabotages = [...regles.match(/const SABOTAGES := \{([\s\S]*?)\n\}/)[1].matchAll(/"(\w+)": \{"nom"/g)].map(m => m[1]);
 const principal = lire('scripts/principal.gd');
 verif(sabotages.length >= 3 && sabotages.every(s => principal.includes(`"${s}"`)), `${sabotages.length} sabotages pour le chat, chacun joué par le jeu (${sabotages.join(', ')})`);
-verif(nombre('CHOSE_CHASSE') > nombre('MARCHE') && nombre('CHOSE_CHASSE') < nombre('COURSE'), 'la chose va plus vite qu\'on ne marche, moins qu\'on ne court');
+verif(nombre('CHOSE_CHASSE') > nombre('MARCHE') && nombre('CHOSE_CHASSE') < nombre('COURSE') && nombre('CHOSE_RODE') < nombre('CHOSE_ENQUETE') && nombre('CHOSE_ENQUETE') < nombre('MARCHE'),
+  'le fantôme marche, presse le pas (moins vite qu\'on ne marche), et court : plus vite qu\'on ne marche, moins qu\'on ne court');
+verif(nombre('CHOSE_VUE') <= 5 && nombre('CHOSE_VUE') < nombre('BRUIT_PAS') + 2 && nombre('CHOSE_PRES') < nombre('CHOSE_VUE'),
+  `il n'y voit presque pas (${nombre('CHOSE_VUE')} m) : on l'attire surtout par le bruit (des pas s'entendent à ${nombre('BRUIT_PAS')} m, une course à ${nombre('BRUIT_COURSE')} m)`);
+const arretent = Object.entries(catalogue).filter(([, o]) => o.masse >= nombre('OBJET_LEGER')).length;
+verif(arretent >= 12 && arretent <= Object.keys(catalogue).length - 12, `${arretent} sortes de meubles l'arrêtent ; les ${Object.keys(catalogue).length - arretent} autres sont trop légères`);
 
 console.log(ok ? '\nTout passe.' : '\nÉCHEC.');
 process.exit(ok ? 0 : 1);

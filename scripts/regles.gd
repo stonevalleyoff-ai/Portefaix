@@ -13,6 +13,13 @@ const DUREE_NUIT := 600.0
 const REPIT := 60.0
 const HAUTEUR := 2.8          # sous plafond ; les portes font 2,2 m
 
+# qui se cogne à quoi : les murs et ce qui tient à la maison ; les meubles ; les porteurs ; ce qui est trop léger pour arrêter le fantôme
+const COUCHE_DECOR := 1
+const COUCHE_OBJETS := 2
+const COUCHE_JOUEURS := 4
+const COUCHE_LEGERS := 16
+const OBJET_LEGER := 12.0     # en dessous de ce poids (kg), un objet n'arrête pas le fantôme : il passe au travers
+
 # le corps (mètres, secondes)
 const MARCHE := 3.4
 const COURSE := 5.6
@@ -55,10 +62,13 @@ const CHOC_PLEIN := 9.0
 const CHOSE_RODE := 1.5
 const CHOSE_ENQUETE := 2.5
 const CHOSE_CHASSE := 4.0     # plus vite qu'on ne marche, moins qu'on ne court
-const CHOSE_VUE := 9.0
+const CHOSE_VUE := 4.5        # il n'y voit presque pas : quelques mètres, et un meuble haut suffit à cacher un porteur
 const CHOSE_VUE_ACCROUPI := 0.5
-const CHOSE_CONE := 0.4       # elle voit devant elle : le cosinus du demi-angle (66° de chaque côté)…
-const CHOSE_PRES := 2.5       # … et sent ce qui est tout près, même dans son dos
+const CHOSE_CONE := 0.6       # droit devant lui : le cosinus du demi-angle (53° de chaque côté)…
+const CHOSE_PRES := 1.5       # … et il sent ce qui est tout contre lui, même dans son dos
+const CHOSE_ELAN := 7.0       # il prend sa vitesse peu à peu (m/s²)
+const CHOSE_BLOCAGE := 0.6    # s'il piétine tout ce temps, c'est qu'un meuble lui barre le passage : il bute
+const CHOSE_BUTEES := 4       # à force de buter sans trouver d'autre passage, il renonce
 const CHOSE_ALERTE := 1.8     # quand elle voit un porteur, elle crie tout ce temps avant de s'élancer
 const CHOSE_SOUFFLE := 10.0   # elle ne chasse pas plus longtemps d'une traite
 const CHOSE_PERTE := 2.5      # sans voir sa proie tout ce temps, elle renonce

@@ -120,6 +120,7 @@ func _maisons() -> void:
 	var meublees := true
 	var portes_libres := true
 	var rangees := true
+	var antres := true
 	var plans := {}
 	var moins := 999
 	var plus := 0
@@ -153,6 +154,10 @@ func _maisons() -> void:
 						if libre.grow(-0.05).has_point(Vector2(o.pos.x, o.pos.z)):
 							portes_libres = false
 		meublees = meublees and types.has("canape") and types.has("lit") and types.has("table") and types.has("frigo") and types.has("tele") and types.has("tableau")
+		m.encombrer(a.lourds)
+		for e in a.lourds:
+			if e.grow(0.25).has_point(Vector2(m.taniere.x, m.taniere.z)):
+				antres = false
 		moins = mini(moins, a.objets.size())
 		plus = maxi(plus, a.objets.size())
 		if graine == 1:                 # la même graine : la même maison, meublée pareil
@@ -174,6 +179,7 @@ func _maisons() -> void:
 	verif(portes_min >= 6, "des portes partout : %d au moins par maison" % portes_min)
 	verif(meublees and moins >= 40, "chacune est meublée : un canapé, une télé, un lit, une table, un frigo, des tableaux (de %d à %d objets)" % [moins, plus])
 	verif(rangees and portes_libres, "tout est posé sur du sol, dans la maison, et rien ne barre une porte")
+	verif(antres, "dans chacune, le fantôme se réveille à un endroit dégagé de sa pièce, pas dans un meuble")
 
 
 # --- seul ---
@@ -203,7 +209,12 @@ func _seul() -> void:
 					atteints += 1
 	verif(lignes_egales and m.portes.size() == 5 and m.lampes.size() >= m.pieces.size(), "un plan de %d sur %d cases, %d pièces, 5 portes à claquer, %d lampes" % [m.largeur, m.profondeur, m.pieces.size(), m.lampes.size()])
 	verif(sols > 200 and atteints == sols, "les %d cases de sol se rejoignent toutes depuis la cour" % sols)
-	verif(m.chemin(m.taniere, Vector3(12, 0, 20)).size() > 10 and m.taniere.distance_to(Vector3(22.5, 0, 3.5)) < 0.1, "la tanière est la pièce la plus loin de l'entrée (le bureau), et la chose a un chemin jusqu'au camion")
+	var libre := true
+	for o in jeu.objets.values():
+		if o.mass >= R.OBJET_LEGER and Vector2(o.global_position.x - m.taniere.x, o.global_position.z - m.taniere.z).length() < 0.45:
+			libre = false
+	verif(m.chemin(m.taniere, Vector3(12, 0, 20)).size() > 10 and Rect2(19, 1, 7, 5).has_point(Vector2(m.taniere.x, m.taniere.z)) and libre,
+		"la tanière est dans la pièce la plus loin de l'entrée (le bureau), à un endroit dégagé, et le fantôme a un chemin jusqu'au camion")
 	verif(m.dans_zone(Vector3(12, 0.5, 19.5)) and not m.dans_zone(Vector3(12, 0.5, 14)), "la zone de chargement est dans la cour, devant la porte")
 
 	print("2. Les meubles")
@@ -239,7 +250,7 @@ func _seul() -> void:
 	verif(tableau.accroche and tableau.freeze and tableau.global_position.y > 1.2, "un tableau tient à son mur, à hauteur d'yeux")
 	var chose = jeu.chose
 	chose.entendre(m.taniere + Vector3(3, 0, 0), 10.0)
-	verif(chose.mode == chose.DORT and not chose.visible, "la chose dort dans le bureau ; un bruit modeste ne la réveille pas")
+	verif(chose.mode == chose.DORT and not chose.visible, "le fantôme dort dans le bureau ; un bruit modeste ne le réveille pas")
 	chose.entendre(m.taniere + Vector3(3, 0, 0), 20.0)
 	verif(chose.mode == chose.ENQUETE, "un grand fracas, si, avant l'heure")
 	chose.mode = chose.DORT       # qu'elle laisse l'essai porter en paix
@@ -365,14 +376,14 @@ func _seul() -> void:
 	chose.global_position = m.taniere
 	chose.reveiller()
 	await _images(2)
-	verif(chose.mode == chose.RODE and chose.visible, "à son heure, la chose se réveille et rôde")
+	verif(chose.mode == chose.RODE and chose.visible, "à son heure, le fantôme se réveille et rôde")
 	var vase = _trouver("vase")
 	chose.global_position = Vector3(12.5, 0.0, 10.5)
 	chose._roder(60.0)
 	_mettre(vase, Vector3(12.5, 2.3, 7.5))             # lâché de haut, dans le couloir
 	await _attendre(1.3)
 	verif(vase.valeur < vase.valeur_neuve, "un vase tombé de deux mètres perd de sa valeur (%d € sur %d)" % [vase.valeur, vase.valeur_neuve])
-	verif(chose.mode == chose.ENQUETE, "la chose l'a entendu : elle va voir")
+	verif(chose.mode == chose.ENQUETE, "le fantôme l'a entendu : il va voir")
 	chose.global_position = m.taniere
 	chose._roder(60.0)
 	moi.bruit = R.BRUIT_PAS
@@ -384,42 +395,59 @@ func _seul() -> void:
 	await _images(3)
 	verif(jeu._indice().contains("klaxonner"), "devant le camion, l'écran propose de klaxonner")
 	moi.agir()
-	verif(chose.mode == chose.ENQUETE and jeu.etat == jeu.PARTIE, "un coup de klaxon sans le quota, si : elle vient, et le camion reste")
+	verif(chose.mode == chose.ENQUETE and jeu.etat == jeu.PARTIE, "un coup de klaxon sans le quota, si : il vient, et le camion reste")
 	moi.global_position = cour
 	moi.bruit = 0.0
 
-	print("7. La chose")
-	var poser := func(ou: Vector3, vers: Vector3):     # la chose, là, tournée vers ce point, prête à voir
+	print("7. Le fantôme")
+	var poser := func(ou: Vector3, vers: Vector3):     # le fantôme, là, tourné vers ce point, prêt à voir
 		chose.global_position = ou
 		chose._roder(60.0)
 		chose._repue = 0.0
+		chose._butees = 0
+		chose._evite.clear()
+		chose._allure = 0.0
 		chose.rotation.y = atan2(-(vers.x - ou.x), -(vers.z - ou.z))
 	var couloir := Vector3(8.5, 0.0, 7.5)
 	var fond := Vector3(25.0, 0.0, 7.5)
+	var loin := Vector3(3.0, 1.1, 24.0)                 # un coin de la cour, pour ranger ce qui gêne
+	var armoire = _trouver("armoire")
+	verif(chose._os.size() >= 15 and chose._lambeaux.size() >= 6 and chose.collision_mask == (R.COUCHE_DECOR | R.COUCHE_OBJETS),
+		"il a un corps : %d articulations, des lambeaux, et de quoi se cogner aux murs et aux meubles" % chose._os.size())
+	print("   sa vue")
 	poser.call(couloir, fond)
-	second.global_position = Vector3(21.5, 0.05, 7.5)
-	await _attendre(0.5)
-	verif(chose.mode == chose.RODE, "à treize mètres dans le couloir, elle ne voit pas le porteur")
-	second.global_position = Vector3(3.5, 0.05, 7.5)
-	await _attendre(0.5)
-	verif(chose.mode == chose.RODE, "ni à cinq mètres dans son dos")
 	second.global_position = Vector3(14.5, 0.05, 7.5)
+	await _attendre(0.5)
+	verif(chose.mode == chose.RODE, "à six mètres devant lui dans le couloir, il ne voit pas le porteur")
+	second.global_position = Vector3(6.0, 0.05, 7.5)
+	await _attendre(0.5)
+	verif(chose.mode == chose.RODE, "ni à deux mètres et demi dans son dos")
+	second.global_position = Vector3(11.5, 0.05, 7.5)
 	second.accroupi = true
 	await _attendre(0.5)
-	verif(chose.mode == chose.RODE, "ni accroupi, à six mètres devant elle")
+	verif(chose.mode == chose.RODE, "ni accroupi, à trois mètres devant lui")
 	second.accroupi = false
-	second.global_position = Vector3(16.5, 0.05, 7.5)
-	await _attendre(0.5)
-	verif(chose.mode == chose.ALERTE and chose.proie == 2 and chose.global_position.distance_to(couloir) < 0.1, "debout à huit mètres devant elle, elle le voit : elle crie, sans avancer")
+	_mettre(armoire, Vector3(10.5, 1.02, 7.5))
+	second.global_position = Vector3(12.5, 0.05, 7.5)
+	await _attendre(0.6)
+	verif(chose.mode == chose.RODE, "ni debout à quatre mètres, derrière une armoire")
+	_mettre(armoire, loin)
+	await _attendre(0.6)
+	verif(chose.mode == chose.ALERTE and chose.proie == 2 and chose.global_position.distance_to(couloir) < 0.1, "l'armoire ôtée, il le voit : il crie, sans avancer")
+	await _images(20)
+	verif(chose._os["machoire"].rotation.x < -0.5 and absf(chose._os["epaule_g"].rotation.z) > 0.6, "la mâchoire décrochée, les bras écartés")
 	await _attendre(R.CHOSE_ALERTE)
-	verif(chose.mode == chose.CHASSE, "près de deux secondes plus tard, elle s'élance")
+	verif(chose.mode == chose.CHASSE, "près de deux secondes plus tard, il s'élance")
 	var t0 := Time.get_ticks_msec()
+	var vite := 0.0
 	while not second.blesse and Time.get_ticks_msec() - t0 < 6000:
+		vite = maxf(vite, chose._vitesse_vue)
 		await get_tree().physics_frame
 	verif(second.blesse and second.vivant and chose.mode == chose.RODE, "son premier coup blesse sans tuer (après %.1f s de chasse)" % ((Time.get_ticks_msec() - t0) / 1000.0))
+	verif(vite > 3.0 and vite <= R.CHOSE_CHASSE + 0.3, "il a couru : déjà %.1f m/s sur trois mètres d'élan (il va jusqu'à %.1f, plus vite qu'on ne marche)" % [vite, R.CHOSE_CHASSE])
 	var coup: Vector3 = chose.global_position
 	await _attendre(1.5)
-	verif(chose.mode == chose.RODE and chose.global_position.distance_to(coup) > 2.0 and second.vivant, "puis elle s'en va vers sa tanière, sans plus regarder le blessé")
+	verif(chose.mode == chose.RODE and chose.global_position.distance_to(coup) > 1.5 and second.vivant, "puis il s'en va vers sa tanière, sans plus regarder le blessé")
 	jeu.blessures[2] = 0.05
 	await _attendre(0.3)
 	verif(not second.blesse, "la blessure guérit avec le temps (%d s)" % int(R.BLESSURE))
@@ -429,23 +457,64 @@ func _seul() -> void:
 	verif(not second.vivant, "et blessé, le coup suivant le tue")
 	verif(moi.vivant and jeu.etat == jeu.PARTIE, "la partie continue tant qu'un porteur vit")
 	second.global_position = Vector3(2.0, 0.05, 20.0)
-	poser.call(couloir, Vector3(4.5, 0.0, 3.0))
-	moi.global_position = Vector3(4.5, 0.05, 3.0)        # dans la chambre : un mur entre eux
+	poser.call(Vector3(6.5, 0.0, 7.5), Vector3(6.5, 0.0, 3.5))
+	moi.global_position = Vector3(6.5, 0.05, 3.5)        # dans la chambre : un mur entre eux
 	await _attendre(0.5)
-	verif(chose.mode == chose.RODE, "derrière un mur, à six mètres, elle ne voit rien")
+	verif(chose.mode == chose.RODE, "derrière un mur, à quatre mètres, il ne voit rien")
 	poser.call(m.seuil, Vector3(12.0, 0.0, 20.0))
 	moi.global_position = Vector3(12.0, 0.05, 17.5)
 	await _attendre(0.5)
-	verif(chose.mode == chose.RODE, "dans la cour, à trois mètres du seuil, elle ne voit pas le porteur non plus")
+	verif(chose.mode == chose.RODE, "dans la cour, à trois mètres du seuil, il ne voit pas le porteur non plus")
 	poser.call(Vector3(12.0, 0.0, 8.0), m.seuil)
-	moi.global_position = Vector3(12.0, 0.05, 12.5)
+	moi.global_position = Vector3(12.0, 0.05, 11.5)
 	await _attendre(0.5)
-	verif(chose.mode == chose.ALERTE and chose.proie == 1, "dans l'entrée, elle le voit et crie")
-	moi.global_position = Vector3(12.0, 0.05, 19.0)      # il sort pendant qu'elle crie
+	verif(chose.mode == chose.ALERTE and chose.proie == 1, "dans l'entrée, à trois mètres et demi, il le voit et crie")
+	moi.global_position = Vector3(12.0, 0.05, 19.0)      # il sort pendant que l'autre crie
 	await _attendre(R.CHOSE_ALERTE + R.CHOSE_PERTE + 3.0)
 	verif(chose.mode != chose.CHASSE and chose.mode != chose.ALERTE and m.dedans(chose.global_position) and moi.vivant and not moi.blesse,
-		"sorti dans la cour, il la sème : elle ne passe pas le seuil")
-	moi.global_position = Vector3(12.0, 0.05, 20.0)
+		"sorti dans la cour, il le sème : le fantôme ne passe pas le seuil")
+	moi.global_position = cour
+	print("   son pas, et ce qui l'arrête")
+	poser.call(couloir, fond)
+	chose.entendre(Vector3(20.0, 0.0, 7.5), 14.0)
+	await _attendre(1.6)
+	verif(chose.mode == chose.ENQUETE and chose._vitesse_vue > R.CHOSE_RODE and chose._vitesse_vue < R.MARCHE and chose.global_position.x > 10.5,
+		"un bruit au fond du couloir : il y va d'un pas pressé (%.1f m/s), sans courir" % chose._vitesse_vue)
+	verif(chose._os["epaule_g"].rotation.x > 0.35 and chose._os["epaule_d"].rotation.x > 0.35, "les bras tendus devant lui : il tâtonne")
+	_mettre(canape, Vector3(13.5, 0.45, 8.0))           # un canapé en travers du couloir : il le barre d'un mur à l'autre
+	canape.rotation.y = PI * 0.5
+	await _attendre(0.8)
+	var place: Vector3 = canape.global_position
+	poser.call(couloir, fond)
+	chose.entendre(Vector3(20.0, 0.0, 7.5), 14.0)
+	var a_bute := false
+	t0 = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 5000:
+		a_bute = a_bute or chose.bute
+		await get_tree().physics_frame
+	verif(a_bute and chose.global_position.x < 13.2 and canape.global_position.distance_to(place) < 0.25, "un canapé en travers du couloir l'arrête : il bute dessus, et cogne (resté à x = %.1f)" % chose.global_position.x)
+	t0 = Time.get_ticks_msec()
+	while chose.mode == chose.ENQUETE and Time.get_ticks_msec() - t0 < 9000:
+		await get_tree().physics_frame
+	verif(chose.mode == chose.RODE and chose.global_position.x < 13.2, "faute d'autre passage, il renonce")
+	_mettre(canape, loin + Vector3(4, 0, 0))
+	_mettre(petit, Vector3(11.5, 0.25, 7.5))             # un carton, lui, ne pèse pas assez
+	await _attendre(0.6)
+	poser.call(couloir, fond)
+	chose.entendre(Vector3(17.0, 0.0, 7.5), 14.0)
+	t0 = Time.get_ticks_msec()
+	while chose.global_position.x < 14.0 and Time.get_ticks_msec() - t0 < 6000:
+		await get_tree().physics_frame
+	verif(chose.global_position.x >= 14.0, "un carton sur son chemin ne l'arrête pas (%d kg : il passe au travers)" % int(petit.mass))
+	jeu.sabotage("porte", 30.0, 1, Vector3.ZERO)        # la porte du salon, claquée
+	await _images(3)
+	poser.call(Vector3(11.5, 0.0, 7.5), Vector3(11.5, 0.0, 3.0))
+	chose.entendre(Vector3(13.0, 0.0, 3.5), 14.0)
+	await _attendre(3.0)
+	verif(chose.global_position.z > 6.8, "une porte claquée l'arrête comme un mur")
+	jeu.effets["porte"].reste = 0.0
+	await _attendre(0.2)
+	moi.global_position = cour
 	chose.global_position = m.taniere
 	chose._roder(60.0)
 
@@ -507,7 +576,6 @@ func _seul() -> void:
 	jeu.sabotage("porte", 0.6, 0, Vector3.ZERO)
 	await _images(3)
 	verif(m.portes[0].verrou and not m.voit(a, b), "la porte claquée, on ne voit plus, et l'on ne passe plus")
-	verif(m.chemin(a, b).size() > 0, "la chose, elle, passe toujours")
 	await _attendre(0.9)
 	verif(not m.portes[0].verrou and m.voit(a, b), "puis elle se rouvre")
 	jeu.sabotage("torches", 0.5, -1, Vector3.ZERO)
@@ -525,7 +593,7 @@ func _seul() -> void:
 	chose.global_position = m.taniere
 	chose._roder(60.0)
 	jeu._sur_vote("vacarme")
-	verif(chose.mode == chose.ENQUETE, "un vacarme sur un porteur : la chose y court")
+	verif(chose.mode == chose.ENQUETE, "un vacarme sur un porteur : le fantôme y va")
 
 	print("11. La fin")
 	jeu.compter()

@@ -55,6 +55,7 @@ var portes: Array = []            # {centre: Vector3, corps: StaticBody3D, forme
 var lampes: Array = []            # {lumiere: OmniLight3D, ampoule: MeshInstance3D}
 var eclairee := true
 var _decor: StaticBody3D
+var _antre := Rect2i()            # la pièce de la tanière
 var _mats := {}
 
 
@@ -330,9 +331,9 @@ func case_au_hasard(h: RandomNumberGenerator) -> Vector3:
 	return taniere
 
 
-# voit-on d'un point à l'autre ? Seuls les murs et les portes claquées cachent.
-func voit(de: Vector3, vers: Vector3) -> bool:
-	var q := PhysicsRayQueryParameters3D.create(de, vers, 1)
+# voit-on d'un point à l'autre ? Les murs et les portes claquées cachent ; et les meubles, si on le demande.
+func voit(de: Vector3, vers: Vector3, masque: int = 1) -> bool:
+	var q := PhysicsRayQueryParameters3D.create(de, vers, masque)
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 
@@ -573,4 +574,27 @@ func _tanier() -> void:
 		var n := chemin(seuil, milieu).size()
 		if n > loin:
 			loin = n
+			_antre = r
 			taniere = centre(case_de(milieu))
+
+
+# la maison meublée : là où pèsent des meubles, le fantôme passe mal. Ses chemins préfèrent les cases dégagées (il butera quand même
+# sur ce qu'on aura déplacé), et sa tanière est une case libre de sa pièce : il ne se réveille pas coincé dans une table.
+func encombrer(lourds: Array) -> void:
+	var prises := {}
+	for e in lourds:
+		var large: Rect2 = e.grow(0.3)
+		for z in range(int(floor(large.position.y)), int(floor(large.end.y)) + 1):
+			for x in range(int(floor(large.position.x)), int(floor(large.end.x)) + 1):
+				var c := Vector2i(x, z)
+				if grille.is_in_boundsv(c) and not grille.is_point_solid(c) and large.has_point(Vector2(x + 0.5, z + 0.5)):
+					prises[c] = true
+					grille.set_point_weight_scale(c, 8.0)
+	var milieu := Vector2(_antre.position.x + _antre.size.x * 0.5, _antre.position.y + _antre.size.y * 0.5)
+	var mieux := 1e9
+	for z in range(_antre.position.y, _antre.end.y):
+		for x in range(_antre.position.x, _antre.end.x):
+			var d := milieu.distance_to(Vector2(x + 0.5, z + 0.5))
+			if not prises.has(Vector2i(x, z)) and d < mieux:
+				mieux = d
+				taniere = Vector3(x + 0.5, 0.0, z + 0.5)

@@ -38,8 +38,8 @@ func preparer(p, i: int, t: String) -> void:
 	valeur_neuve = d.valeur
 	valeur = valeur_neuve
 	fragile = d.fragile
-	collision_layer = 2
-	collision_mask = 1 | 2 | 4
+	collision_layer = R.COUCHE_OBJETS if mass >= R.OBJET_LEGER else R.COUCHE_LEGERS      # (le fantôme bute sur ce qui pèse, pas sur un vase)
+	collision_mask = R.COUCHE_DECOR | R.COUCHE_OBJETS | R.COUCHE_LEGERS | R.COUCHE_JOUEURS
 	var matiere := PhysicsMaterial.new()
 	matiere.friction = 0.45
 	matiere.bounce = 0.05

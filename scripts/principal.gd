@@ -400,6 +400,7 @@ func _meubler(graine: int) -> void:
 	a.amenager(maison, h)
 	for d in a.decors:
 		maison.ajouter_decor(d)
+	maison.encombrer(a.lourds)
 	total = 0
 	for d in a.objets:
 		var o := Objet.new()
@@ -615,13 +616,14 @@ func objets_etat(d: PackedFloat32Array) -> void:
 
 
 @rpc("authority", "call_remote", "unreliable")
-func partie_etat(t: float, c: int, ou: Vector3, yaw: float, mode: int) -> void:
+func partie_etat(t: float, c: int, ou: Vector3, yaw: float, mode: int, bute: bool) -> void:
 	temps = t
 	charge = c
 	if chose != null:
 		chose.cible_pos = ou
 		chose.cible_yaw = yaw
 		chose.mode = clampi(mode, 0, 4)
+		chose.bute = bute
 
 
 @rpc("authority", "call_local", "reliable")
@@ -652,7 +654,7 @@ func mort(qui: int) -> void:
 	j.mourir()
 	sons.jouer_a("mort", j.global_position + Vector3.UP, 4.0)
 	if qui == mon_id:
-		ui.mort("La chose t'a pris. Tu hantes la maison : %s pour pousser les petits objets." % ("le bouton Pousser" if tactile.actif else "E"))
+		ui.mort("Le fantôme t'a pris. Tu hantes la maison : %s pour pousser les petits objets." % ("le bouton Pousser" if tactile.actif else "E"))
 	else:
 		ui.annoncer("%s ne répond plus." % j.nom)
 
@@ -661,7 +663,7 @@ func mort(qui: int) -> void:
 func repere(qui: int, ou: Vector3) -> void:
 	sons.jouer_a("hurle", ou + Vector3.UP * 2.0, 8.0)
 	if qui == mon_id:
-		ui.annoncer("Elle t'a vu ! Cours, ou sors de la maison.", 3.0)
+		ui.annoncer("Il t'a vu ! Cours, ou sors de la maison.", 3.0)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -673,7 +675,7 @@ func blessure(qui: int, oui: bool) -> void:
 	if oui:
 		sons.jouer_a("choc", j.global_position + Vector3.UP, 8.0)
 	if qui == mon_id:
-		ui.mort("Blessé : un coup de plus et c'est fini. Elle ne sort pas de la maison." if oui else "")
+		ui.mort("Blessé : un coup de plus et c'est fini. Il ne sort pas de la maison." if oui else "")
 		if not oui:
 			ui.annoncer("Tu es guéri.")
 
@@ -792,7 +794,7 @@ func _physics_process(dt: float) -> void:
 	temps -= dt
 	if chose.mode == Creature.DORT and R.DUREE_NUIT - temps > repit:
 		chose.reveiller()
-		annonce.rpc("Quelque chose s'est réveillé dans la maison. Elle ne sort pas dans la cour.")
+		annonce.rpc("Quelque chose s'est réveillé dans la maison. Ça n'y voit presque pas, mais ça entend tout.")
 	chose.avancer(dt)
 	for qui in bras:
 		bras[qui] = [maxf(bras[qui][0] - dt, 0.0), maxf(bras[qui][1] - dt, 0.0)]
@@ -821,7 +823,7 @@ func _physics_process(dt: float) -> void:
 		_t_etat -= dt
 		if _t_etat <= 0.0:
 			_t_etat = 0.1
-			partie_etat.rpc(temps, charge, chose.global_position, chose.rotation.y, chose.mode)
+			partie_etat.rpc(temps, charge, chose.global_position, chose.rotation.y, chose.mode, chose.bute)
 		_t_objets -= dt
 		if _t_objets <= 0.0:
 			_t_objets = 0.05

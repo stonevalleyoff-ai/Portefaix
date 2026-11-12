@@ -15,6 +15,7 @@ const EN_FACE := [1, 0, 3, 2]
 
 var objets: Array = []            # {type, pos: Vector3, yaw: float, accroche: bool}
 var decors: Array = []            # {pos: Vector3, yaw: float, boites: [[centre, taille, couleur]], solide: bool}
+var lourds: Array = []            # la place au sol de ce qui arrête le fantôme : les meubles qui pèsent, ce qui tient à la maison
 var m
 var h: RandomNumberGenerator
 var _r := Rect2()                 # la pièce qu'on meuble, en mètres
@@ -256,6 +257,8 @@ func _poser(type: String, c: Vector2, yaw: float, y: float = 0.0) -> Dictionary:
 	objets.append({"type": type, "pos": Vector3(c.x, y + t.y * 0.5 + 0.02, c.y), "yaw": yaw, "accroche": false})
 	if y <= 0.0:
 		_pris.append([e, t.y])
+		if R.CATALOGUE[type].masse >= R.OBJET_LEGER:
+			lourds.append(e)
 	return {"type": type, "c": c, "yaw": yaw, "t": t, "haut": y + t.y, "e": e}
 
 
@@ -420,6 +423,7 @@ func _decor_au_mur(t: Vector3, boites: Array) -> Dictionary:
 	if ou.is_empty():
 		return {}
 	_pris.append([ou.e, t.y])
+	lourds.append(ou.e)
 	decors.append({"pos": Vector3(ou.c.x, 0.0, ou.c.y), "yaw": ou.yaw, "boites": boites, "solide": true})
 	return {"c": ou.c, "yaw": ou.yaw, "t": t, "haut": t.y, "e": ou.e, "cote": ou.cote, "u": ou.u}
 

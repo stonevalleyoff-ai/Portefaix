@@ -47,8 +47,8 @@ func preparer(p, i: int, depart: Vector3, rang: int) -> void:
 	name = "j%d" % i
 	set_multiplayer_authority(i)
 	local = i == p.mon_id
-	collision_layer = 4
-	collision_mask = 1 | 2
+	collision_layer = R.COUCHE_JOUEURS
+	collision_mask = R.COUCHE_DECOR | R.COUCHE_OBJETS | R.COUCHE_LEGERS
 	position = depart
 	cible_pos = depart
 	var forme := CollisionShape3D.new()
@@ -219,7 +219,7 @@ func vise() -> Vector3:
 # ce qu'il a sous les yeux, à portée de main : un meuble, le camion, ou rien
 func regard() -> Object:
 	var de := tete.global_position
-	var q := PhysicsRayQueryParameters3D.create(de, de + vise() * R.PORTEE, 1 | 2)
+	var q := PhysicsRayQueryParameters3D.create(de, de + vise() * R.PORTEE, R.COUCHE_DECOR | R.COUCHE_OBJETS | R.COUCHE_LEGERS)
 	q.exclude = [get_rid()]
 	var vu := get_world_3d().direct_space_state.intersect_ray(q)
 	return vu.get("collider")

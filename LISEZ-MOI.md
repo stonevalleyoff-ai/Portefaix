@@ -48,20 +48,21 @@ outils/godot.sh --path .
 
 ## Les règles
 
-- **La maison** : inventée à chaque nuit, d'après une graine que tous les joueurs partagent. Un couloir en travers, une entrée qui donne sur la cour, et de six à onze pièces de tailles inégales, certaines en enfilade. Chaque pièce ouvre sur le couloir ou sur une voisine, souvent les deux : il y a des portes partout, et plus d'un chemin pour fuir. La chose dort dans la pièce la plus loin de l'entrée.
+- **La maison** : inventée à chaque nuit, d'après une graine que tous les joueurs partagent. Un couloir en travers, une entrée qui donne sur la cour, et de six à onze pièces de tailles inégales, certaines en enfilade. Chaque pièce ouvre sur le couloir ou sur une voisine, souvent les deux : il y a des portes partout, et plus d'un chemin pour fuir. Le fantôme dort dans la pièce la plus loin de l'entrée.
 - **Les pièces** ont chacune leur métier et sont meublées en conséquence : au salon, le canapé dos au mur, la télé en face sur son meuble, la table basse entre les deux sur son tapis, une bibliothèque, un piano si la place y est ; dans les chambres, le lit la tête au mur, ses tables de nuit, une lampe dessus, l'armoire, la commode et sa boîte à bijoux ; à la salle à manger, la table et ses chaises, le buffet ; à la cuisine, le plan de travail, la cuisinière, le frigo ; au bureau, le bureau, son ordinateur, ses bibliothèques ; à la salle de bain, la baignoire, le lavabo, la machine à laver. Les tableaux et les miroirs sont accrochés aux murs, et y tiennent tant qu'on ne les prend pas. De 70 à 130 objets à emporter, de 35 sortes ; la baignoire, le lavabo, le plan de travail et les tapis tiennent à la maison.
 - **Le quota** : 25 % de la valeur de la maison pour un porteur seul, 6 % de plus par porteur, 60 % au plus. Ce qui compte est ce qui est **posé** dans la zone jaune, à sa valeur du moment.
 - **Les bras** sont élastiques. Les deux mains s'accrochent à ce qu'on prend, une de chaque côté, et le meuble tourne avec son porteur. Quand on s'éloigne de ce qu'on tient (un canapé coincé dans une porte, un meuble trop lourd qu'on traîne), les bras s'étirent, s'affinent et rougissent ; passé 2,1 m, ils rappellent leur porteur en arrière. À 3,3 m, **un bras s'arrache** : il reste pendu au meuble, et l'on tient encore de l'autre, deux fois moins fort. S'il s'arrache aussi, tout tombe. Un bras repousse en 8 secondes ; sans bras, on ne prend rien.
 - **Porter** : chaque porteur donne une force limitée, la moitié par bras. Seul, à deux bras, on soulève jusqu'à 45 kg ; à deux, 90 ; à trois, 135. Ce qui pèse plus se traîne. Ce qu'on porte ralentit.
 - **La casse** : un choc coûte à un meuble une part de sa valeur, selon sa fragilité. Un vase perd presque tout, un canapé presque rien.
 - **Le bruit** : les pas, la course, les cris, les chocs et le **vrai micro** du joueur ont une portée en mètres. La jauge en bas à gauche la montre.
-- **La chose** : elle dort une minute, puis rôde. Elle va voir tout bruit qui porte jusqu'à elle. Elle ne tue pas d'office, et on a de quoi lui échapper :
-  - elle ne voit que **devant elle**, à 9 m (moitié moins si l'on est accroupi), et sent ce qui est à moins de 2,5 m : on passe dans son dos ;
-  - quand elle voit un porteur, elle **crie près de deux secondes** avant de s'élancer : c'est le moment de fuir ;
-  - elle va plus vite qu'on ne marche et moins vite qu'on ne court, ne chasse pas plus de 10 secondes d'une traite, et renonce si elle ne voit plus sa proie pendant 2,5 secondes ;
-  - elle **ne sort pas de la maison** : la cour est sûre ;
-  - son **premier coup blesse** sans tuer, puis elle rentre à sa tanière. La blessure guérit en 45 secondes ; blessé, le coup suivant tue.
-  Elle traverse les meubles et les portes claquées, pas les murs.
+- **Le fantôme** dort une minute dans la pièce la plus loin de l'entrée, puis rôde. C'est un grand spectre décharné, drapé de lambeaux, qu'on entend marcher.
+  - Il **n'y voit presque pas** : 4,5 m, droit devant lui (moitié moins si l'on est accroupi), et il sent ce qui est à moins de 1,5 m. Un meuble haut entre lui et un porteur suffit à le cacher.
+  - Mais il **entend tout** : un bruit qui porte jusqu'à lui, il y va, d'un pas pressé, les bras tendus devant lui, en tâtonnant.
+  - Il **marche** quand il rôde, **presse le pas** quand il cherche, **court** quand il chasse : plus vite qu'on ne marche, moins qu'on ne court, pas plus de 10 secondes d'une traite. Il renonce s'il ne voit plus sa proie pendant 2,5 secondes.
+  - Il a un corps : **les meubles lourds l'arrêtent** (12 kg et plus). Il bute, cogne des deux bras, puis cherche un passage par une autre porte ; s'il n'y en a pas, il renonce. Un canapé en travers d'un couloir, une armoire dans une porte le tiennent dehors ; un carton ou un vase, non. Une porte claquée par le chat l'arrête aussi.
+  - Quand il voit un porteur, il **crie près de deux secondes** avant de s'élancer : c'est le moment de fuir.
+  - Il **ne sort pas de la maison** : la cour est sûre.
+  - Son **premier coup blesse** sans tuer, puis il rentre à sa tanière. La blessure guérit en 45 secondes ; blessé, le coup suivant tue.
 - **Les morts** hantent la maison : ils volent, et poussent les objets de moins de 12 kg. Pour aider, ou non.
 - **Le chat** : toutes les 40 secondes, trois sabotages sont proposés. Le public vote `1`, `2` ou `3` pendant 15 secondes, une voix par personne. Les cinq sabotages : couper le courant, claquer une porte, faire du vacarme sur un porteur, griller les torches, mettre les meubles en apesanteur.
 - **La fin** : gagné si le quota est dans la zone à 6 h, ou si l'on klaxonne le camion une fois le quota atteint. Perdu si l'aube se lève sur un camion trop vide, ou si plus personne n'est en vie. Klaxonner sans le quota ne fait que prévenir la chose.
@@ -78,7 +79,7 @@ Tous les réglages sont dans `scripts/regles.gd`.
 | `scripts/amenagement.gd` | meubler chaque pièce selon son métier |
 | `scripts/objet.gd` | un objet : son dessin, les mains qui le tiennent, le portage, la casse |
 | `scripts/joueur.gd` | un porteur, vivant ou mort, et ses bras |
-| `scripts/creature.gd` | la chose : entendre, voir, chasser |
+| `scripts/creature.gd` | le fantôme : son corps et ses poses, entendre, voir, marcher, buter, chasser |
 | `scripts/chat.gd` | les votes, les spectateurs de paille, la lecture du chat de Twitch |
 | `scripts/micro.gd` | le niveau du micro (rien n'est enregistré ni envoyé) |
 | `scripts/sons.gd` | les sons, fabriqués au lancement |
@@ -135,7 +136,7 @@ node outils/essai-pwa.js site
 
 ## Où en est le prototype
 
-- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (91 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
+- **Vérifié dans Godot 4.3, sans écran** : les deux essais passent (101 vérifications seul, 17 en réseau, 20 pour la connexion ; avec `--en-ligne`, le vrai service refuse bien un compte qui n'existe pas).
 - **Vérifié dans Chromium, l'application installable** : l'essai passe (11 vérifications) : le manifeste et ses icônes, le service worker qui s'installe et garde le jeu entier, le jeu relancé et joué seul réseau coupé.
 - **Vérifié dans Chromium** (WebGL 2, un téléphone émulé de 844 sur 390, de vrais touchers) : l'export web se charge, le menu passe au doigt, une partie commence, le joystick fait marcher jusque dans le salon, le pouce droit tourne le regard pendant qu'on marche, « Courir » reste enfoncé, « Torche » éteint la lampe. Deux pouces à la fois : le gauche tenant le joystick, le droit glisse et revient sans que la vue saute, puis glisse et la vue tourne.
 - **Vérifié dans trois Chromium à la fois** : l'essai en ligne passe (28 vérifications). Et les fonctions du salon, dans un Postgres local : les codes, six porteurs au plus, la nuit commencée fermée aux nouveaux, le ménage des vieux salons, tout refusé sans compte.
