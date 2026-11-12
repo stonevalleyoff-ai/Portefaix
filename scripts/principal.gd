@@ -462,6 +462,7 @@ func _meubler(graine: int) -> void:
 		monde.add_child(o)
 		if serveur:
 			o.choc.connect(_sur_choc)
+			o.traine.connect(_sur_traine)
 		objets[o.id] = o
 		o.bonus = d.get("bonus", false)
 		if o.bonus:                      # la prime ne compte pas dans le quota : c'est en plus
@@ -511,6 +512,10 @@ func _demande(qui: int, quoi: String, args: Array) -> void:
 			pousser(qui, ido)
 		"klaxon":
 			klaxonner(qui)
+		"heurt":                         # il s'est cogné, ou il est retombé : tout le monde l'entend, le fantôme aussi
+			var rayon := clampf(float(args[0]) if args.size() >= 1 and typeof(args[0]) in [TYPE_FLOAT, TYPE_INT] else 0.0, 0.0, 20.0)
+			chose.entendre(joueurs[qui].global_position, rayon)
+			son_a.rpc("choc", joueurs[qui].global_position + Vector3(0.0, 0.4, 0.0), clampf(rayon - 16.0, -10.0, 2.0))
 
 
 func prendre(qui: int, ido: int) -> void:
@@ -567,6 +572,7 @@ func arracher(qui: int, cote: int, ido: int) -> void:
 	attente[cote] = R.BRAS_REPOUSSE
 	bras[qui] = attente
 	bras_arrache.rpc(qui, cote, ido, point)
+	chose.entendre(o.global_position, R.BRUIT_ARRACHE)
 	objet_info.rpc(ido, o.valeur, reste)
 
 
@@ -777,6 +783,8 @@ func _effet(nom: String, actif: bool, param: int) -> void:
 			maison.verrouiller(param, actif)
 			if param >= 0 and param < maison.portes.size():
 				sons.jouer_a("porte", maison.portes[param].centre, 6.0)
+				if serveur and actif and chose != null:      # une porte qui claque : il l'entend
+					chose.entendre(maison.portes[param].centre, R.BRUIT_PORTE)
 		"torches":
 			for j in joueurs.values():
 				j.torche_ok = not actif
@@ -835,6 +843,12 @@ func _sur_choc(o, dv: float) -> void:
 		objet_info.rpc(o.id, o.valeur, o.prises)
 	chose.entendre(o.global_position, clampf(3.0 + dv * sqrt(o.mass) * 0.55, 3.0, 22.0))
 	son_a.rpc("casse" if o.valeur != avant and o.fragile > 0.5 else "choc", o.global_position, clampf(dv * 2.0 - 12.0, -12.0, 6.0))
+
+
+# un meuble lourd qu'on traîne : il racle, et cela s'entend d'autant plus loin qu'il pèse
+func _sur_traine(o) -> void:
+	chose.entendre(o.global_position, R.BRUIT_TRAINE + sqrt(o.mass))
+	son_a.rpc("frotte", o.global_position, clampf(sqrt(o.mass) - 14.0, -12.0, 0.0))
 
 
 # --- la partie qui tourne ---

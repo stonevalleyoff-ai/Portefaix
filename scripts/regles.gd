@@ -51,8 +51,16 @@ const BRUIT_MICRO := 18.0     # le vrai micro, à pleine voix
 const MICRO_SEUIL := -38.0    # dB : en dessous, le micro ne compte pas
 const MICRO_PLEIN := -8.0
 const BRUIT_KLAXON := 30.0
+const BRUIT_SAUT := 6.0       # la réception d'un saut ; de plus haut, on l'entend de plus loin (BRUIT_CHUTE par m/s de trop)
+const BRUIT_CHUTE := 1.6
+const BRUIT_HEURT := 2.6      # se cogner à un mur ou à un meuble : par m/s perdu (en marchant : 9 m ; en courant : 14 m)
+const HEURT_SEUIL := 2.0      # en dessous de cette vitesse perdue d'un coup, on ne s'est pas cogné
+const BRUIT_TRAINE := 5.0     # un meuble qu'on traîne au sol : ce rayon, plus la racine de son poids (un canapé : 12 m)
+const BRUIT_PORTE := 14.0     # une porte qui claque
+const BRUIT_ARRACHE := 9.0    # un bras qui s'arrache
 
 # la casse : un choc, c'est la vitesse perdue d'un coup (m/s)
+const CHOC_BRUIT := 0.7       # à partir de ce choc (m/s), un meuble s'entend ; il ne s'abîme qu'à partir de CHOC_SEUIL
 const CHOC_SEUIL := 2.2
 const CHOC_PLEIN := 9.0
 

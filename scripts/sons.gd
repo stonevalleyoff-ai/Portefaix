@@ -19,6 +19,7 @@ func _ready() -> void:
 	_r.seed = 11
 	_brefs["pas"] = _wav(_frappe(0.09, 95.0, 0.5))
 	_brefs["choc"] = _wav(_frappe(0.28, 70.0, 0.7))
+	_brefs["frotte"] = _wav(_raclement(0.4))
 	_brefs["casse"] = _wav(_eclats(0.45))
 	_brefs["porte"] = _wav(_frappe(0.4, 48.0, 0.9))
 	_brefs["vote"] = _wav(_notes([660.0, 880.0], 0.09, 0.0))
@@ -99,6 +100,17 @@ func _vide(duree: float) -> PackedFloat32Array:
 
 
 # un coup sourd : une note grave qui s'éteint, et un souffle au début
+# un meuble qu'on traîne : un souffle grave, râpeux
+func _raclement(duree: float) -> PackedFloat32Array:
+	var d := _vide(duree)
+	var grave := 0.0
+	for i in d.size():
+		var t := float(i) / TAUX
+		grave = lerpf(grave, _r.randf_range(-1.0, 1.0), 0.08)
+		d[i] = grave * 2.2 * sin(PI * t / duree) * (0.7 + 0.3 * sin(TAU * 23.0 * t))
+	return d
+
+
 func _frappe(duree: float, hz: float, souffle: float) -> PackedFloat32Array:
 	var d := _vide(duree)
 	for i in d.size():

@@ -786,6 +786,7 @@ func _seul() -> void:
 	jeu.tuer(1)
 	await _attendre(0.2)
 	jeu.bonus_voulu = []
+	await _bruits()
 	await _etages()
 	jeu.retour_menu()
 	verif(jeu.etat == jeu.MENU and jeu.monde == null and jeu.joueurs.is_empty(), "et l'on revient au menu")
@@ -818,8 +819,167 @@ func _suivre(vers: Vector3, delai: float) -> Array:
 	return [false, marches, delai]
 
 
+# le fantôme, éveillé, tranquille, à cette distance du porteur : a-t-il entendu, une fois ce délai passé ?
+func _oreille(ou: Vector3) -> void:
+	var chose = jeu.chose
+	chose.reveiller()
+	chose._roder(600.0)
+	chose._repue = 0.0
+	chose._interet = 0.0
+	chose.global_position = ou
+	chose.rotation.y = PI          # (le dos tourné : il ne voit personne, il ne peut qu'entendre)
+	await _images(3)
+
+
+func _entendu(vers: Vector3) -> bool:
+	var chose = jeu.chose
+	if chose.mode == chose.ALERTE or chose.mode == chose.CHASSE:      # (il a entendu, s'est retourné, et l'a vu)
+		return true
+	return chose.mode == chose.ENQUETE and Vector2(chose._destination.x - vers.x, chose._destination.z - vers.z).length() < 2.0
+
+
+# tout ce qui fait du bruit, et que le fantôme entend : un par un, lui à quelques mètres, le dos tourné
+func _bruits() -> void:
+	print("13. Le bruit")
+	jeu.lancer()
+	await _attendre(0.5)
+	jeu.repit = 1e9
+	jeu.chat.reste = 1e9
+	var m = jeu.maison
+	var moi = jeu.moi
+	var couloir := Vector3(13.0, 0.05, 8.0)        # le milieu du couloir de la maison d'essai
+	var pres := Vector3(18.0, 0.0, 8.0)            # le fantôme, cinq mètres plus loin
+	for o in jeu.objets.values():                   # (un couloir vide : rien d'autre ne fera de bruit)
+		if absf(o.global_position.z - 8.0) < 1.2:
+			_mettre(o, Vector3(3.0 + (o.id % 20), 0.5, m.profondeur + 9.0))
+	await _attendre(1.0)
+	# immobile : rien
+	moi.pilote = false
+	moi.global_position = couloir
+	moi.velocity = Vector3.ZERO
+	await _oreille(pres)
+	await _attendre(0.6)
+	verif(jeu.chose.mode == jeu.chose.RODE and moi.bruit < 0.5, "un porteur immobile ne fait aucun bruit : le fantôme, à cinq mètres, le dos tourné, ne bouge pas")
+	# accroupi : on ne l'entend pas à cinq mètres ; en marchant, pas à cinq mètres non plus (4 m), mais à trois
+	moi.yaw = PI * 0.5                               # (vers l'ouest : il s'éloigne)
+	jeu.tactile.accroupi = true
+	for i in 30:
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		await get_tree().physics_frame
+	jeu.tactile.accroupi = false
+	verif(jeu.chose.mode == jeu.chose.RODE and moi.bruit > 0.5, "accroupi, ses pas ne portent pas jusque-là (%.1f m)" % R.BRUIT_ACCROUPI)
+	moi.global_position = couloir + Vector3(2.5, 0.0, 0.0)
+	await _oreille(pres)
+	for i in 25:
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		await get_tree().physics_frame
+	verif(_entendu(moi.global_position), "ses pas, à moins de %d m : le fantôme y va" % int(R.BRUIT_PAS))
+	# la course, de plus loin
+	moi.global_position = couloir + Vector3(-3.0, 0.0, 0.0)
+	moi.velocity = Vector3.ZERO
+	await _oreille(pres)
+	jeu.tactile.court = true
+	for i in 25:
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		await get_tree().physics_frame
+	jeu.tactile.court = false
+	jeu.tactile.vecteur = Vector2.ZERO
+	verif(_entendu(moi.global_position), "sa course, à huit mètres et plus (elle porte à %d m)" % int(R.BRUIT_COURSE))
+	# un saut : la réception
+	moi.global_position = couloir
+	moi.velocity = Vector3.ZERO
+	await _attendre(0.5)
+	await _oreille(pres)
+	verif(jeu.chose.mode == jeu.chose.RODE, "arrêté, il se tait de nouveau")
+	jeu.tactile.saut = true
+	await _images(3)
+	jeu.tactile.saut = false
+	var haut := 0.0
+	for i in 70:
+		haut = maxf(haut, moi.global_position.y)
+		await get_tree().physics_frame
+	verif(haut > 0.4 and _entendu(couloir), "un saut sur place (%.0f cm) : il retombe, et le fantôme l'entend (%d m)" % [haut * 100.0, int(R.BRUIT_SAUT)])
+	# une course contre un mur
+	moi.global_position = couloir + Vector3(3.0, 0.0, 0.3)     # (devant un mur plein, pas devant une porte)
+	moi.velocity = Vector3.ZERO
+	await _attendre(0.5)
+	await _oreille(Vector3(13.0, 0.0, 3.0) + Vector3(11.0, 0.0, 0.0))       # dans le bureau, à douze mètres : trop loin pour des pas
+	moi.yaw = 0.0                                    # (vers le nord : le mur du couloir est à un mètre)
+	var bruit_max := 0.0
+	jeu.tactile.court = true
+	for i in 40:
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		bruit_max = maxf(bruit_max, moi.bruit)
+		await get_tree().physics_frame
+	jeu.tactile.court = false
+	jeu.tactile.vecteur = Vector2.ZERO
+	verif(bruit_max > R.BRUIT_COURSE + 0.5 and _entendu(moi.global_position), "une course contre un mur : il s'y cogne, et cela s'entend plus loin que sa course (%.0f m)" % bruit_max)
+	_pilote(moi)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 6.0)
+	await _attendre(0.4)
+	# un meuble : un petit choc s'entend sans rien casser, un grand casse
+	var vase = _trouver("vase")
+	_mettre(vase, couloir + Vector3(0.0, vase.taille.y * 0.5 + 0.1, 0.0))
+	await _oreille(pres + Vector3(-1.5, 0.0, 0.0))
+	await _attendre(0.8)
+	verif(_entendu(couloir) and vase.valeur == vase.valeur_neuve, "un vase posé un peu vite (de dix centimètres) : intact, mais entendu")
+	_mettre(vase, couloir + Vector3(0.0, 2.2, 0.0))
+	await _oreille(pres + Vector3(1.0, 0.0, 0.0))
+	await _attendre(1.2)
+	verif(_entendu(couloir) and vase.valeur < vase.valeur_neuve, "le même, lâché de deux mètres : cassé, et entendu de plus loin")
+	_mettre(vase, Vector3(3.0, 0.3, m.profondeur + 8.0))
+	# un meuble lourd qu'on traîne
+	var canape = _trouver("canape")
+	_mettre(canape, couloir + Vector3(0.0, canape.taille.y * 0.5 + 0.02, 0.0))
+	canape.rotation.y = PI * 0.5
+	await _attendre(1.0)
+	await _oreille(pres + Vector3(4.0, 0.0, 0.0))
+	verif(jeu.chose.mode == jeu.chose.RODE, "un canapé posé là, immobile : silence")
+	for i in 40:
+		canape.sleeping = false
+		canape.linear_velocity = Vector3(-1.2, canape.linear_velocity.y, 0.0)
+		await get_tree().physics_frame
+	verif(_entendu(canape.global_position), "traîné au sol, il racle : le fantôme l'entend à neuf mètres (%d m)" % int(R.BRUIT_TRAINE + sqrt(canape.mass)))
+	_mettre(canape, Vector3(8.0, 0.6, m.profondeur + 8.0))
+	# une porte qui claque, un bras qui s'arrache, un cri, le klaxon
+	var porte: Dictionary = m.portes[0]
+	await _oreille(porte.centre * Vector3(1, 0, 1) + Vector3(6.0, 0.0, 1.5))
+	jeu._effet("porte", true, 0)
+	verif(_entendu(porte.centre), "une porte qui claque")
+	jeu._effet("porte", false, 0)
+	var carton = _trouver("carton")
+	_mettre(carton, couloir + Vector3(0.0, 0.3, 0.0))
+	moi.global_position = couloir + Vector3(0.0, 0.0, 0.8)
+	_tourner(moi, carton.global_position)
+	await _attendre(0.6)
+	jeu.prendre(1, carton.id)
+	await _attendre(0.3)
+	await _oreille(pres)
+	jeu.arracher(1, 0, carton.id)
+	verif(_entendu(carton.global_position), "un bras qui s'arrache")
+	jeu.lacher(1, carton.id, false)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
+	await _oreille(Vector3(m.porte_x, 0.0, m.profondeur - 9.0))
+	moi.pilote = false
+	await _images(5)
+	moi.crier()
+	await _attendre(0.5)
+	verif(_entendu(moi.global_position), "un cri dans la cour, à douze mètres : il vient jusqu'au seuil")
+	await _oreille(Vector3(3.0, 0.0, 3.0))
+	jeu.klaxonner(1)
+	verif(jeu.chose.mode == jeu.chose.ENQUETE, "le klaxon, du fond de la maison")
+	# ce qui l'empêche d'entendre : il dort (sauf grand fracas), il chasse, il vient de frapper
+	jeu.chose.mode = jeu.chose.DORT
+	jeu.chose.entendre(jeu.chose.global_position + Vector3(2.0, 0.0, 0.0), 12.0)
+	var dort: bool = jeu.chose.mode == jeu.chose.DORT
+	jeu.chose.entendre(jeu.chose.global_position + Vector3(2.0, 0.0, 0.0), 15.0)
+	verif(dort and jeu.chose.mode == jeu.chose.ENQUETE, "endormi, seul un bruit fort le réveille (15 m et plus) ; tout bruit plus loin que sa portée est perdu")
+	jeu.tuer(1)
+	await _attendre(0.2)
+
+
 func _etages() -> void:
-	print("13. L'étage et le sous-sol")
+	print("14. L'étage et le sous-sol")
 	jeu.etages_voulus = true
 	jeu.lancer()
 	await _attendre(0.5)

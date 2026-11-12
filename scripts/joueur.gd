@@ -30,6 +30,8 @@ var _mat_corps: StandardMaterial3D
 var _cri := 0.0
 var _envoi := 0.0
 var _pas := 0.0
+var _chute := 0.0              # sa vitesse de chute, juste avant de toucher le sol
+var _t_heurt := 0.0
 var _prise_le := -1               # quand la souris a été prise (ce qu'elle dit juste après ne compte pas)
 var repousse := [0.0, 0.0]        # ce qu'il reste à chaque bras (gauche, droit) pour repousser ; 0 : il est là
 var couleur := Color.WHITE
@@ -337,11 +339,25 @@ func _physics_process(dt: float) -> void:
 				var tire: Vector3 = (a[1] - e).normalized() * trop * R.BRAS_RAPPEL * dt
 				velocity.x += tire.x
 				velocity.z += tire.z
+		var en_l_air := not is_on_floor()
+		var lance := Vector2(velocity.x, velocity.z)
+		if en_l_air:
+			_chute = minf(velocity.y, 0.0)
 		move_and_slide()
-		# le bruit qu'il fait : ses pas, son cri, et son vrai micro
+		# le bruit qu'il fait : ses pas, ses sauts, ce à quoi il se cogne, son cri, et son vrai micro
 		var b := 0.0
+		_t_heurt = maxf(_t_heurt - dt, 0.0)
+		if en_l_air and is_on_floor() and _chute < -2.5:       # il retombe : d'un saut, ou de plus haut
+			b = R.BRUIT_SAUT + maxf(-_chute - R.SAUT, 0.0) * R.BRUIT_CHUTE
+			principal.vouloir("heurt", [b])
+		var perdu := lance.length() - Vector2(velocity.x, velocity.z).length()
+		if perdu > R.HEURT_SEUIL and get_slide_collision_count() > 0 and _t_heurt <= 0.0:      # il se cogne : un mur, un meuble
+			_t_heurt = 0.4
+			b = maxf(b, perdu * R.BRUIT_HEURT)
+			principal.vouloir("heurt", [b])
+		_chute = 0.0 if is_on_floor() else _chute
 		if dir != Vector3.ZERO and is_on_floor():
-			b = R.BRUIT_ACCROUPI if accroupi else (R.BRUIT_COURSE if court else R.BRUIT_PAS)
+			b = maxf(b, R.BRUIT_ACCROUPI if accroupi else (R.BRUIT_COURSE if court else R.BRUIT_PAS))
 			_pas -= dt * (v / R.MARCHE)
 			if _pas <= 0.0:
 				_pas = 0.5

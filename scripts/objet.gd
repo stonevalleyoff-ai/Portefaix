@@ -8,6 +8,7 @@ extends RigidBody3D
 const R = preload("res://scripts/regles.gd")
 
 signal choc(objet, force)
+signal traine(objet)
 
 var id := 0
 var type := ""
@@ -26,6 +27,8 @@ var principal
 var cible_pos := Vector3.ZERO     # chez les invités : où l'hôte dit qu'il est
 var cible_rot := Quaternion.IDENTITY
 var _v_avant := Vector3.ZERO
+var _t_traine := 0.0
+var _dv_avant := 0.0              # le choc de l'instant d'avant : le contact ne se sait qu'un instant après
 var _calme := 2.0                 # pas de casse pendant que la maison se pose
 
 
@@ -72,6 +75,9 @@ func preparer(p, i: int, t: String) -> void:
 	if not principal.serveur:
 		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 		freeze = true
+	else:                                # (l'hôte veut savoir ce qu'il touche : un choc, un frottement, cela s'entend)
+		contact_monitor = true
+		max_contacts_reported = 4
 
 
 # accroché à un mur : il ne tombe pas tant qu'on ne l'a pas pris
@@ -331,9 +337,22 @@ func _physics_process(dt: float) -> void:
 	_calme = maxf(_calme - dt, 0.0)
 	var dv := (linear_velocity - _v_avant).length()
 	_v_avant = linear_velocity
-	if dv > R.CHOC_SEUIL and _calme <= 0.0:
+	# un choc s'entend dès qu'il est net (contre quelque chose : la main qui l'emporte n'est pas un choc) ; plus fort, il abîme
+	var contre := false                  # touche-t-il autre chose qu'un porteur ?
+	if not sleeping and get_contact_count() > 0:
+		for corps in get_colliding_bodies():
+			contre = contre or not corps is CharacterBody3D
+	var coup := maxf(dv, _dv_avant)
+	_dv_avant = dv
+	if _calme <= 0.0 and (dv > R.CHOC_SEUIL or (coup > R.CHOC_BRUIT and contre and (prises.is_empty() or mass >= R.OBJET_LEGER))):
 		_calme = 0.25
-		choc.emit(self, dv)
+		_dv_avant = 0.0
+		choc.emit(self, coup)
+	# un meuble lourd qu'on traîne racle le sol
+	_t_traine = maxf(_t_traine - dt, 0.0)
+	if contre and mass >= R.OBJET_LEGER and _t_traine <= 0.0 and _calme <= 0.3 and Vector2(linear_velocity.x, linear_velocity.z).length() > 0.5:
+		_t_traine = 0.45
+		traine.emit(self)
 	if prises.is_empty():
 		return
 	sleeping = false
