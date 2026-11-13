@@ -148,7 +148,7 @@ func _bouton(parent: Control, t: String, quoi: Callable) -> Button:
 
 func _faire_menu() -> void:
 	_texte(_menu, "PORTEFAIX", 64, Color(1.0, 0.86, 0.5))
-	_texte(_menu, "Videz la maison avant l'aube. Ne réveillez pas ce qui y dort.", 20)
+	_texte(_menu, "Videz le manoir avant l'aube. Ne réveillez pas ce qui y dort.", 20)
 	_avis = _texte(_menu, "", 18, Color(1.0, 0.5, 0.4))
 	# le compte : qui l'on est, et le pseudo que les autres verront
 	var ligne_compte := HBoxContainer.new()

@@ -220,7 +220,10 @@ func _entree() -> void:
 
 
 func _couloir() -> void:
-	for i in 3:
+	if _n >= 0:                                  # un long tapis rouge, usé, d'un bout à l'autre
+		var long := _r.size.x >= _r.size.y
+		_tapis(_r.get_center(), Vector2(_r.size.x - 1.0, 1.1) if long else Vector2(1.1, _r.size.y - 1.0), Color(0.42, 0.07, 0.09))
+	for i in 3 if _n >= 0 else 0:
 		_mural("tableau")
 
 

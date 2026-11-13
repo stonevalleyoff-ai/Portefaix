@@ -70,6 +70,8 @@ const CHOC_PLEIN := 9.0
 const CHOSE_RODE := 1.5
 const CHOSE_ENQUETE := 2.5
 const CHOSE_CHASSE := 4.0     # plus vite qu'on ne marche, moins qu'on ne court
+# son ouïe : tout bruit lui parvient de moitié plus loin qu'il ne porte (le manoir est grand, il faut bien cela)
+const CHOSE_OUIE := 1.5
 const CHOSE_VUE := 4.5        # il n'y voit presque pas : quelques mètres, et un meuble haut suffit à cacher un porteur
 const CHOSE_VUE_ACCROUPI := 0.5
 const CHOSE_CONE := 0.6       # droit devant lui : le cosinus du demi-angle (53° de chaque côté)…

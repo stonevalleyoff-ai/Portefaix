@@ -459,7 +459,7 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 		ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez.%s" % [quota, "\nL'escalier est au bout du couloir : un étage, un sous-sol." if maison.niveaux.size() > 1 else ""], 9.0)
 	else:
 		var noms: Array = maison.bonus.map(func(b): return maison.NOMS[b])
-		ui.annoncer("MAISON BONUS ! Ici : %s. Une fortune, en plus du quota.\nChargez pour %d € avant 6 h, puis klaxonnez." % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, quota], 10.0)
+		ui.annoncer("MANOIR BONUS ! Ici : %s. Une fortune, en plus du quota.\nChargez pour %d € avant 6 h, puis klaxonnez." % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, quota], 10.0)
 	if not tactile.actif:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -832,7 +832,7 @@ func mort(qui: int) -> void:
 func repere(qui: int, ou: Vector3) -> void:
 	sons.jouer_a("hurle", ou + Vector3.UP * 2.0, 8.0)
 	if qui == mon_id:
-		ui.annoncer("Il t'a vu ! Cours, ou sors de la maison.", 3.0)
+		ui.annoncer("Il t'a vu ! Cours, ou sors du manoir.", 3.0)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -888,7 +888,7 @@ func fin(victoire: bool, c: int, q: int, raison: String, facture: Dictionary = {
 		comptes += "\n" + bourse.dire()
 		_dire_bourse()
 	ui.fin("%s\n\n%s\nChargé : %d € sur %d € demandés.\n%d porteur(s) sur %d voient le jour."
-		% ["LA MAISON EST VIDÉE" if victoire else "LA MAISON A GAGNÉ", raison, c, q, vivants, joueurs.size()], serveur, comptes)
+		% ["LE MANOIR EST VIDÉ" if victoire else "LE MANOIR A GAGNÉ", raison, c, q, vivants, joueurs.size()], serveur, comptes)
 
 
 # --- les sabotages ---
@@ -986,7 +986,7 @@ func _physics_process(dt: float) -> void:
 	temps -= dt
 	if chose.mode == Creature.DORT and R.DUREE_NUIT - temps > repit:
 		chose.reveiller()
-		annonce.rpc("Quelque chose s'est réveillé dans la maison. Ça n'y voit presque pas, mais ça entend tout.")
+		annonce.rpc("Quelque chose s'est réveillé dans le manoir. Ça n'y voit presque pas, mais ça entend tout.")
 	chose.avancer(dt)
 	for qui in bras:
 		bras[qui] = [maxf(bras[qui][0] - dt, 0.0), maxf(bras[qui][1] - dt, 0.0)]

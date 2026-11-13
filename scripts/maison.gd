@@ -79,7 +79,7 @@ var fixes_n: Array = []           # et le niveau de chacun
 var _vu_n := 0                     # d'où le joueur regarde : son niveau, et s'il est près de la cage
 var _vu_pres := false
 var _pans := {}                    # les boîtes du décor, à fondre : par niveau et par carré de six mètres
-var _niveau_bati := 0
+var _matiere := "grain"            # la matière de ce qu'on bâtit (scripts/boites.gd)
 var _couche := 1                  # la couche de ce qu'on bâtit : les lampes d'un niveau n'éclairent que lui
 var _mats := {}
 
@@ -114,8 +114,8 @@ func construire(graine: int) -> void:
 	for n in niveaux:
 		_murs(n)
 	_marches()
+	_dehors()
 	_lampes()
-	_couche = 1
 	_camion()
 	for n in niveaux:
 		_grille(n)
@@ -588,6 +588,17 @@ func regarder_de(p: Vector3) -> void:
 		l.lumiere.visible = eclairee and en_vue(l.lumiere.position, l.niveau)
 
 
+# les lampes du manoir vacillent, comme des flammes
+func _process(_dt: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for l in lampes:
+		if not l.lumiere.visible:
+			continue
+		if l.force == 0.0:
+			l.force = l.lumiere.light_energy
+		l.lumiere.light_energy = l.force * (0.9 + 0.07 * sin(t * 7.3 + l.phase) + 0.05 * sin(t * 17.9 + l.phase * 2.3))
+
+
 func lumieres(oui: bool) -> void:
 	eclairee = oui
 	for l in lampes:
@@ -637,7 +648,7 @@ func _teinte_qui_luit(lueur: float) -> StandardMaterial3D:
 func _boite(parent: Node3D, c: Vector3, t: Vector3, m: Material, solide: bool = true) -> void:
 	if parent == _decor and m is StandardMaterial3D and not m.emission_enabled:
 		# une boîte du décor : on ne la dessine pas seule, on la fondra avec ses voisines (_fondre)
-		var cle := Vector3i(int(floor(c.x / 6.0)), int(round(c.y / PAS)), int(floor(c.z / 6.0)))
+		var cle := "%s/%d/%d/%d" % [_matiere, int(floor(c.x / 6.0)), int(round(c.y / PAS)), int(floor(c.z / 6.0))]
 		if not _pans.has(cle):
 			_pans[cle] = Boites.new()
 		_pans[cle].ajouter(c, t, m.albedo_color)
@@ -662,8 +673,8 @@ func _boite(parent: Node3D, c: Vector3, t: Vector3, m: Material, solide: bool = 
 # maillage n'en compte que peu), au lieu d'un par mur
 func _fondre() -> void:
 	for cle in _pans:
-		var mesh: MeshInstance3D = _pans[cle].noeud()
-		mesh.name = "Pan_%d_%d_%d" % [cle.x, cle.y, cle.z]
+		var mesh: MeshInstance3D = _pans[cle].noeud(cle.get_slice("/", 0))
+		mesh.name = "Pan_" + cle.replace("/", "_")
 		add_child(mesh)
 	_pans.clear()
 
@@ -676,7 +687,6 @@ func ajouter_decor(d: Dictionary) -> void:
 	corps.position = d.pos
 	corps.rotation.y = d.yaw
 	add_child(corps)
-	_couche = couche(niveau_de(d.pos.y))
 	var fondu := Boites.new()        # ce qui ne luit pas : un seul maillage pour tout le meuble
 	for b in d.boites:               # (une boîte : son milieu, sa taille, sa couleur ; et, si elle est tournée ou qu'elle luit, de combien)
 		var tour: float = b[3] if b.size() > 3 else 0.0
@@ -703,7 +713,6 @@ func ajouter_decor(d: Dictionary) -> void:
 func _sol() -> void:
 	var l := float(largeur)
 	var p := float(profondeur)
-	_couche = 1
 	# la cour : un sol solide, devant la maison (dans la maison, chaque niveau a son plancher : il faut des trous pour les escaliers)
 	var forme := CollisionShape3D.new()
 	var s := BoxShape3D.new()
@@ -711,8 +720,11 @@ func _sol() -> void:
 	forme.shape = s
 	forme.position = Vector3(l * 0.5, -0.5, p + 60.0)
 	_decor.add_child(forme)
-	_boite(_decor, Vector3(l * 0.5, -0.06, p + 10.0), Vector3(110.0, 0.1, 90.0), mat(Color(0.07, 0.11, 0.08)), false)        # l'herbe
-	_boite(_decor, Vector3(porte_x, -0.04, p + 1.0), Vector3(3.0, 0.1, 2.0), mat(Color(0.3, 0.3, 0.31)), false)              # le seuil
+	_matiere = "herbe"
+	_boite(_decor, Vector3(l * 0.5, -0.06, p + 10.0), Vector3(110.0, 0.1, 90.0), mat(Color(0.1, 0.15, 0.1)), false)          # l'herbe
+	_matiere = "pierre"
+	_boite(_decor, Vector3(porte_x, -0.04, p + 1.0), Vector3(3.0, 0.1, 2.0), mat(Color(0.42, 0.42, 0.44)), false)            # le seuil
+	_boite(_decor, Vector3(porte_x, -0.045, p + 4.0), Vector3(2.2, 0.1, 5.0), mat(Color(0.3, 0.3, 0.32)), false)             # l'allée
 	for n in niveaux:
 		_plancher(n, n == niveaux.min())
 	_plancher(niveaux.max() + 1, false)        # le toit
@@ -720,11 +732,11 @@ func _sol() -> void:
 		if piece.type == "palier":
 			continue
 		var r: Rect2i = piece.rect
-		_couche = couche(piece.niveau)
+		_matiere = "pierre" if piece.type in ["cuisine", "bain", "buanderie", "chaufferie", "cave", "garage", "tresor"] else "bois"      # du carrelage, de la dalle, ou du parquet
 		_boite(_decor, Vector3(r.position.x + r.size.x * 0.5, y_de(piece.niveau) - 0.045, r.position.y + r.size.y * 0.5), Vector3(r.size.x, 0.1, r.size.y), mat(SOLS[piece.type]), false)
-	_couche = 1
 	# la clôture de la cour : trois côtés
-	var bois := mat(Color(0.16, 0.12, 0.09))
+	_matiere = "grain"
+	var bois := mat(Color(0.1, 0.1, 0.11))
 	var fond := p + float(COUR)
 	_boite(_decor, Vector3(0.5, 1.5, p + COUR * 0.5), Vector3(0.3, 3.0, COUR), bois)
 	_boite(_decor, Vector3(l - 0.5, 1.5, p + COUR * 0.5), Vector3(0.3, 3.0, COUR), bois)
@@ -765,20 +777,20 @@ func _dalle(n: int, fond: bool, r: Rect2) -> void:
 	forme.position = milieu + Vector3(0, -0.15, 0)
 	_decor.add_child(forme)
 	if n <= niveaux.max():                 # le dessus, qu'éclairent les lampes de ce niveau
-		_couche = couche(n)
-		_boite(_decor, milieu + Vector3(0, -0.085, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.22, 0.16, 0.11)), false)
+		_matiere = "bois" if n >= 0 else "pierre"
+		_boite(_decor, milieu + Vector3(0, -0.085, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.3, 0.21, 0.14) if n >= 0 else Color(0.3, 0.3, 0.31)), false)
 	if not fond:                           # le dessous : le plafond du niveau d'en dessous
-		_couche = couche(n - 1)
-		_boite(_decor, milieu + Vector3(0, -0.225, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.2, 0.19, 0.18)), false)
+		_matiere = "bois"                      # (un plafond à lattes, sombre)
+		_boite(_decor, milieu + Vector3(0, -0.225, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.2, 0.16, 0.13)), false)
 
 
 func _murs(n: int) -> void:
-	var mur := mat(Color(0.5, 0.47, 0.4) if n >= 0 else Color(0.36, 0.35, 0.34))
+	var mur := mat(Color(0.86, 0.84, 0.8) if n >= 0 else Color(0.5, 0.49, 0.48))      # (la couleur est dans la texture : le lambris, le papier peint)
 	var battant := mat(Color(0.28, 0.17, 0.1))
 	var haut: float = R.HAUTEUR - PORTE_HAUT
 	var y := y_de(n)
 	var p: Array = plans[n]
-	_couche = couche(n)
+	_matiere = "mur" if n >= 0 else "pierre"
 	for z in profondeur:
 		var x := 0
 		while x < largeur:
@@ -814,10 +826,117 @@ func _murs(n: int) -> void:
 	var cx := float(cage.position.x)
 	var cz := float(cage.position.y)
 	_boite(_decor, Vector3(cx + 5.0, y + R.HAUTEUR * 0.5, cz + 2.0), Vector3(6.0, R.HAUTEUR, 0.12), mur)
+	_matiere = "grain"
 	if n == 1:
 		_boite(_decor, Vector3(cx + 2.06, y + 0.5, cz + 1.0), Vector3(0.12, 1.0, 2.0), mat(Color(0.28, 0.17, 0.1)))
 	elif n == -1:
 		_boite(_decor, Vector3(cx + 2.06, y + R.HAUTEUR * 0.5, cz + 3.0), Vector3(0.12, R.HAUTEUR, 2.0), mur)
+
+
+# le manoir, vu de la cour : une façade de pierre et ses fenêtres, un toit d'ardoise et ses cheminées, un porche, une grille, des
+# arbres morts, quelques tombes, la lune. Rien de tout cela n'arrête personne : c'est pour l'œil.
+func _dehors() -> void:
+	var l := float(largeur)
+	var p := float(profondeur)
+	var haut: float = y_de(niveaux.max()) + R.HAUTEUR + 0.3       # le haut des murs
+	var h := RandomNumberGenerator.new()
+	h.seed = largeur * 131 + profondeur * 17 + int(porte_x)
+	var pierre := Boites.new()
+	var deco := Boites.new()
+	var gris := Color(0.36, 0.36, 0.39)
+	# la façade : de la pierre devant le mur, de part et d'autre de la porte, et au-dessus
+	var p0 := porte_x - 1.0
+	var p1 := porte_x + 1.0
+	pierre.ajouter(Vector3(p0 * 0.5, haut * 0.5, p + 0.04), Vector3(p0, haut, 0.08), gris)
+	pierre.ajouter(Vector3((p1 + l) * 0.5, haut * 0.5, p + 0.04), Vector3(l - p1, haut, 0.08), gris)
+	pierre.ajouter(Vector3(porte_x, (PORTE_HAUT + haut) * 0.5, p + 0.04), Vector3(2.0, haut - PORTE_HAUT, 0.08), gris)
+	pierre.ajouter(Vector3(l * 0.5, 0.25, p + 0.12), Vector3(l, 0.5, 0.16), gris.darkened(0.25))                    # le soubassement
+	pierre.ajouter(Vector3(l * 0.5, haut + 0.12, p + 0.1), Vector3(l + 0.4, 0.24, 0.5), gris.lightened(0.1))        # la corniche
+	# les fenêtres : hautes, à croisillons ; quelques-unes éclairées, d'autres condamnées
+	var lueurs := Node3D.new()
+	add_child(lueurs)
+	for n in niveaux:
+		if n < 0:
+			continue
+		var x := 2.0
+		while x < l - 2.0:
+			if absf(x - porte_x) > 2.4:
+				var y := y_de(n) + 1.55
+				var sort := h.randf()
+				deco.ajouter(Vector3(x, y, p + 0.1), Vector3(1.3, 1.9, 0.1), Color(0.14, 0.11, 0.09))                 # le cadre
+				if sort < 0.2:                                           # condamnée : trois planches en travers
+					for k in 3:
+						deco.ajouter(Vector3(x, y - 0.6 + k * 0.6, p + 0.17), Vector3(1.4, 0.22, 0.04), Color(0.3, 0.21, 0.13), Basis(Vector3.BACK, h.randf_range(-0.12, 0.12)))
+				else:
+					var vitre := mat(Color(0.95, 0.75, 0.35), 0.9) if sort > 0.78 else mat(Color(0.05, 0.07, 0.12))
+					_boite(lueurs, Vector3(x, y, p + 0.14), Vector3(1.06, 1.66, 0.04), vitre, false)
+					deco.ajouter(Vector3(x, y, p + 0.17), Vector3(0.07, 1.66, 0.04), Color(0.14, 0.11, 0.09))
+					deco.ajouter(Vector3(x, y + 0.25, p + 0.17), Vector3(1.06, 0.07, 0.04), Color(0.14, 0.11, 0.09))
+				pierre.ajouter(Vector3(x, y - 1.02, p + 0.14), Vector3(1.5, 0.12, 0.2), gris.lightened(0.12))            # l'appui
+			x += 3.0
+	# le toit : deux pans d'ardoise, et deux cheminées
+	var ardoise := Color(0.13, 0.14, 0.18)
+	var pente := 0.6
+	var rampant := (p * 0.5 + 0.8) / cos(pente)
+	for cote: float in [-1.0, 1.0]:
+		deco.ajouter(Vector3(l * 0.5, haut + sin(pente) * rampant * 0.5, p * 0.5 + cote * cos(pente) * rampant * 0.5), Vector3(l + 1.2, 0.2, rampant), ardoise, Basis(Vector3.RIGHT, cote * pente))
+	for cx: float in [l * 0.22, l * 0.7]:
+		pierre.ajouter(Vector3(cx, haut + 2.6, p * 0.5 + 3.0), Vector3(1.1, 5.0, 1.1), gris.darkened(0.2))
+		pierre.ajouter(Vector3(cx, haut + 5.2, p * 0.5 + 3.0), Vector3(1.4, 0.3, 1.4), gris.darkened(0.35))
+	# le porche : deux colonnes, un auvent
+	for cote: float in [-1.0, 1.0]:
+		pierre.ajouter(Vector3(porte_x + cote * 1.6, 1.4, p + 1.8), Vector3(0.36, 2.8, 0.36), gris.lightened(0.15))
+		pierre.ajouter(Vector3(porte_x + cote * 1.6, 0.15, p + 1.8), Vector3(0.6, 0.3, 0.6), gris)
+	deco.ajouter(Vector3(porte_x, 3.0, p + 1.0), Vector3(4.2, 0.25, 2.4), ardoise, Basis(Vector3.RIGHT, 0.12))
+	# la grille de la cour, devant la palissade : des barreaux, des piliers
+	var fer := Color(0.05, 0.05, 0.06)
+	var fond := p + float(COUR) - 0.75
+	var bx := 1.0
+	while bx < l - 0.9:
+		deco.ajouter(Vector3(bx, 1.3, fond), Vector3(0.07, 2.6, 0.07), fer)
+		deco.ajouter(Vector3(bx, 2.68, fond), Vector3(0.14, 0.16, 0.14), fer, Basis(Vector3.UP, PI * 0.25))
+		bx += 0.5
+	deco.ajouter(Vector3(l * 0.5, 2.2, fond), Vector3(l - 2.0, 0.08, 0.06), fer)
+	deco.ajouter(Vector3(l * 0.5, 0.5, fond), Vector3(l - 2.0, 0.08, 0.06), fer)
+	# des arbres morts, le long des côtés ; et des tombes
+	for k in 5:
+		var gauche := k % 2 == 0
+		var ax := h.randf_range(1.6, 3.2) if gauche else h.randf_range(l - 3.2, l - 1.6)
+		if absf(ax - porte_x) < 5.0:
+			continue
+		var az := p + 2.5 + k * 1.9
+		var tronc := h.randf_range(2.6, 3.8)
+		var ecorce := Color(0.12, 0.1, 0.09)
+		deco.ajouter(Vector3(ax, tronc * 0.5, az), Vector3(0.34, tronc, 0.34), ecorce, Basis(Vector3.BACK, h.randf_range(-0.1, 0.1)))
+		for b in 4:                                       # ses branches, nues
+			var tour := h.randf() * TAU
+			var leve := h.randf_range(0.5, 1.0)
+			var long := h.randf_range(1.0, 1.9)
+			var base := Basis(Vector3.UP, tour) * Basis(Vector3.BACK, leve)
+			deco.ajouter(Vector3(ax, tronc * h.randf_range(0.6, 1.0), az) + base * Vector3(long * 0.5, 0, 0), Vector3(long, 0.13, 0.13), ecorce, base)
+	for k in 6:
+		var tx := h.randf_range(1.8, 4.5) if k % 2 == 0 else h.randf_range(l - 4.5, l - 1.8)
+		if absf(tx - porte_x) < 4.2:
+			continue
+		var tz := p + 3.0 + h.randf_range(0.0, 7.0)
+		var penche := Basis(Vector3.UP, h.randf_range(-0.4, 0.4)) * Basis(Vector3.BACK, h.randf_range(-0.14, 0.14))
+		pierre.ajouter(Vector3(tx, 0.45, tz), Vector3(0.6, 0.9, 0.16), gris.lightened(0.1), penche)
+		pierre.ajouter(Vector3(tx, 0.95, tz), Vector3(0.4, 0.14, 0.16), gris.lightened(0.1), penche)
+	add_child(pierre.noeud("pierre"))
+	add_child(deco.noeud("grain"))
+	# la lune, pâle, au-dessus du toit
+	var lune := MeshInstance3D.new()
+	var disque := SphereMesh.new()
+	disque.radius = 5.0
+	disque.height = 10.0
+	lune.mesh = disque
+	lune.position = Vector3(l * 0.5 - 30.0, 55.0, p * 0.5 - 70.0)
+	var pale := StandardMaterial3D.new()
+	pale.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pale.albedo_color = Color(0.85, 0.88, 0.8)
+	pale.disable_fog = true
+	lune.material_override = pale
+	add_child(lune)
 
 
 # les escaliers : une pente solide (un meuble s'y traîne, et y glisse), et des marches par-dessus pour l'œil
@@ -837,7 +956,6 @@ func _marches() -> void:
 		corps.position = Vector3((e.xb + e.xh) * 0.5 - normale.x * 0.15, yb + PAS * 0.5 - normale.y * 0.15, z)
 		corps.rotation.z = angle
 		add_child(corps)
-		_couche = couche(e.de) | couche(e.de + 1)
 		_boite(corps, Vector3.ZERO, Vector3(long.length(), 0.3, 2.0), mat(Color(0.2, 0.15, 0.1)))
 		var bois := mat(Color(0.42, 0.3, 0.19))
 		for i in 12:
@@ -862,7 +980,6 @@ func _lampes() -> void:
 	for piece in pieces:
 		var r: Rect2i = piece.rect
 		var n := maxi(1, int(ceil(maxi(r.size.x, r.size.y) / 11.0)))
-		_couche = couche(piece.niveau)
 		if piece.type == "palier":             # une lampe à chaque palier
 			_lampe(Vector2(r.position.x + 1.0, r.position.y + 2.0), piece.niveau)
 			_lampe(Vector2(r.position.x + 5.0, r.position.y + (1.0 if piece.niveau < 0 else 3.0)), piece.niveau)      # (pas au-dessus des marches : on s'y cognerait)
@@ -897,7 +1014,7 @@ func _lampe(p: Vector2, n: int) -> void:
 	a.material_override = mat(Color(1.0, 0.85, 0.55), 2.5)
 	a.layers = couche(n)
 	add_child(a)
-	lampes.append({"lumiere": l, "ampoule": a, "niveau": n})
+	lampes.append({"lumiere": l, "ampoule": a, "niveau": n, "force": 0.0, "phase": randf() * TAU})
 
 
 func _camion() -> void:

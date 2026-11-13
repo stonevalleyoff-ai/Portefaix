@@ -216,6 +216,7 @@ func reveiller() -> void:
 
 # un bruit, quelque part : s'il porte jusqu'à lui, et s'il vaut mieux que celui qu'il suit, il y va
 func entendre(ou: Vector3, rayon: float) -> void:
+	rayon *= R.CHOSE_OUIE
 	if mode == CHASSE or mode == ALERTE or _repue > 0.0:
 		return
 	var d := global_position.distance_to(ou)

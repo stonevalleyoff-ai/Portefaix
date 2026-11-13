@@ -96,6 +96,7 @@ func _marcher(j, vers: Vector3, vitesse: float = 3.0) -> void:
 
 func _pilote(j) -> void:
 	j.pilote = true
+	j.bruit = 0.0                  # (tenu par l'essai, il ne fait plus de bruit : sans cela son dernier pas résonnerait sans fin)
 	j.collision_layer = 0
 
 
@@ -341,7 +342,7 @@ func _seul() -> void:
 	verif(face.dot(vers_tele.normalized()) > 0.7, "et le canapé la regarde")
 	verif(tableau.accroche and tableau.freeze and tableau.global_position.y > 1.2, "un tableau tient à son mur, à hauteur d'yeux")
 	var chose = jeu.chose
-	chose.entendre(m.taniere + Vector3(3, 0, 0), 10.0)
+	chose.entendre(m.taniere + Vector3(3, 0, 0), 8.0)
 	verif(chose.mode == chose.DORT and not chose.visible, "le fantôme dort dans le bureau ; un bruit modeste ne le réveille pas")
 	chose.entendre(m.taniere + Vector3(3, 0, 0), 20.0)
 	verif(chose.mode == chose.ENQUETE, "un grand fracas, si, avant l'heure")
@@ -757,7 +758,7 @@ func _seul() -> void:
 	jeu.bonus_voulu = ["cave", "garage"]
 	jeu.lancer()
 	await _attendre(0.5)
-	verif(jeu.maison.bonus == ["cave", "garage"] and jeu.ui._annonce.text.contains("MAISON BONUS") and jeu.ui._annonce.text.contains("la cave au rituel"),
+	verif(jeu.maison.bonus == ["cave", "garage"] and jeu.ui._annonce.text.contains("MANOIR BONUS") and jeu.ui._annonce.text.contains("la cave au rituel"),
 		"la maison d'essai, avec une cave et un garage : l'écran l'annonce")
 	var tresors := 0
 	for o in jeu.objets.values():
@@ -1049,10 +1050,12 @@ func _bruits() -> void:
 	verif(jeu.chose.mode == jeu.chose.ENQUETE, "le klaxon, du fond de la maison")
 	# ce qui l'empêche d'entendre : il dort (sauf grand fracas), il chasse, il vient de frapper
 	jeu.chose.mode = jeu.chose.DORT
-	jeu.chose.entendre(jeu.chose.global_position + Vector3(2.0, 0.0, 0.0), 12.0)
+	jeu.chose._repue = 0.0
+	jeu.chose._interet = 0.0
+	jeu.chose.entendre(jeu.chose.global_position + Vector3(2.0, 0.0, 0.0), 9.0)
 	var dort: bool = jeu.chose.mode == jeu.chose.DORT
-	jeu.chose.entendre(jeu.chose.global_position + Vector3(2.0, 0.0, 0.0), 15.0)
-	verif(dort and jeu.chose.mode == jeu.chose.ENQUETE, "endormi, seul un bruit fort le réveille (15 m et plus) ; tout bruit plus loin que sa portée est perdu")
+	jeu.chose.entendre(jeu.chose.global_position + Vector3(2.0, 0.0, 0.0), 10.0)
+	verif(dort and jeu.chose.mode == jeu.chose.ENQUETE, "endormi, seul un bruit fort le réveille (%d m et plus : une course, pas des pas) ; tout bruit plus loin que sa portée est perdu" % int(15.0 / R.CHOSE_OUIE))
 	jeu.tuer(1)
 	await _attendre(0.2)
 
