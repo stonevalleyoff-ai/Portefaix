@@ -286,7 +286,7 @@ func _seul() -> void:
 	jeu.chat.reste = 1e9
 	var m = jeu.maison
 	var moi = jeu.moi
-	var cour := Vector3(m.porte_x, 0.05, m.profondeur + 4.0)
+	var cour := Vector3(m.porte_x, 0.05, m.profondeur + 2.6)        # entre la porte et la rampe du camion
 
 	print("1. La maison d'essai")
 	var lignes_egales := true
@@ -308,7 +308,8 @@ func _seul() -> void:
 			libre = false
 	verif(m.chemin(m.taniere, Vector3(12, 0, 20)).size() > 10 and Rect2(19, 1, 7, 5).has_point(Vector2(m.taniere.x, m.taniere.z)) and libre,
 		"la tanière est dans la pièce la plus loin de l'entrée (le bureau), à un endroit dégagé, et le fantôme a un chemin jusqu'au camion")
-	verif(m.dans_zone(Vector3(12, 0.5, 19.5)) and not m.dans_zone(Vector3(12, 0.5, 14)), "la zone de chargement est dans la cour, devant la porte")
+	verif(m.dans_zone(Vector3(12, 0.6, 24.0)) and not m.dans_zone(Vector3(12, 0.5, 19.0)) and not m.dans_zone(Vector3(12, 0.5, 14)) and not m.dans_zone(Vector3(15.0, 0.6, 24.0)),
+		"la zone de chargement est dans la caisse du camion : ni devant, dans la cour, ni à côté")
 
 	print("2. Les meubles")
 	var dedans := true
@@ -373,12 +374,24 @@ func _seul() -> void:
 	verif(moi.frein() < 1.0 and moi.frein() > 0.8, "un carton le ralentit à peine (%d %%)" % int(moi.frein() * 100))
 	await _marcher(moi, cour + Vector3(0, 0, -1.7))
 	verif(carton.porteurs == [1], "il le garde en main à travers la maison, jusque dans la cour")
-	_tourner(moi, Vector3(12.0, 1.6, 30.0))
-	await _attendre(0.5)
+	# il monte dans le camion, pour de bon : la rampe, puis la caisse
+	moi.pilote = false
+	moi.yaw = PI                   # (vers le camion)
+	moi.pitch = 0.0
+	var t_rampe := Time.get_ticks_msec()
+	while moi.global_position.z < m.zone.position.y + 2.0 and Time.get_ticks_msec() - t_rampe < 8000:
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		await get_tree().physics_frame
+	jeu.tactile.vecteur = Vector2.ZERO
+	await _images(20)
+	verif(m.zone.has_point(Vector2(moi.global_position.x, moi.global_position.z)) and absf(moi.global_position.y - m.PLATEAU) < 0.08 and carton.porteurs == [1],
+		"il monte la rampe du camion à pied, le carton en main, jusque dans la caisse (%.2f m du sol)" % moi.global_position.y)
+	_pilote(moi)
+	await _attendre(0.3)
 	moi.agir()                     # la même touche le pose
 	await _attendre(1.2)
 	jeu.compter()
-	verif(moi.porte == -1 and m.dans_zone(carton.global_position), "il le pose dans la zone")
+	verif(moi.porte == -1 and m.dans_zone(carton.global_position), "il le pose dans la caisse")
 	verif(jeu.charge == carton.valeur and jeu.charge > 0, "le chargement compte le carton : %d €" % jeu.charge)
 
 	print("4. Les bras")
@@ -482,11 +495,18 @@ func _seul() -> void:
 	moi.bruit = R.BRUIT_PAS
 	chose.entendre(moi.global_position, moi.bruit)
 	verif(chose.mode == chose.RODE, "des pas dans la cour ne portent pas jusqu'au bureau")
-	var klaxon := Vector3(m.camion.get_center().x, 1.2, m.camion.position.y)
-	moi.global_position = klaxon + Vector3(0, -1.15, -1.5)
+	var klaxon := Vector3(m.camion.end.x - 0.15, 1.2, m.camion.end.y - 0.9)       # le flanc de la cabine, au bout du camion
+	moi.global_position = klaxon + Vector3(1.5, -1.15, 0)
 	_tourner(moi, klaxon)
 	await _images(3)
-	verif(jeu._indice().contains("klaxonner"), "devant le camion, l'écran propose de klaxonner")
+	verif(jeu._indice().contains("klaxonner"), "à la cabine du camion, l'écran propose de klaxonner")
+	moi.global_position = Vector3(m.porte_x, m.PLATEAU + 0.05, m.zone.position.y + 1.0)
+	_tourner(moi, Vector3(m.zone.end.x, 1.5, m.zone.position.y + 2.0))
+	await _images(3)
+	verif(not jeu._indice().contains("klaxonner"), "dans la caisse, on ne klaxonne pas par mégarde en visant ses parois")
+	moi.global_position = klaxon + Vector3(1.5, -1.15, 0)
+	_tourner(moi, klaxon)
+	await _images(3)
 	moi.agir()
 	verif(chose.mode == chose.ENQUETE and jeu.etat == jeu.PARTIE, "un coup de klaxon sans le quota, si : il vient, et le camion reste")
 	moi.global_position = cour
@@ -541,11 +561,16 @@ func _seul() -> void:
 	var coup: Vector3 = chose.global_position
 	await _attendre(1.5)
 	verif(chose.mode == chose.RODE and chose.global_position.distance_to(coup) > 1.5 and second.vivant, "puis il s'en va vers sa tanière, sans plus regarder le blessé")
-	jeu.blessures[2] = 0.05
-	await _attendre(0.3)
-	verif(not second.blesse, "la blessure guérit avec le temps (%d s)" % int(R.BLESSURE))
+	await _attendre(1.0)
+	verif(second.blesse, "la peur bleue ne passe pas toute seule")
+	second.global_position = Vector3(m.camion.position.x - 1.2, 0.05, m.camion.position.y + 2.0)       # au camion, contre son flanc
+	await _attendre(R.REPRISE * 0.5)
+	var encore: bool = second.blesse
+	await _attendre(R.REPRISE * 0.5 + 0.4)
+	verif(encore and not second.blesse, "il faut revenir au camion, et y rester %d secondes, pour reprendre ses esprits" % int(R.REPRISE))
+	second.global_position = cour + Vector3(1.5, 0, 0)
 	jeu.frapper(2)
-	verif(second.blesse and second.vivant, "un autre coup le blesse de nouveau")
+	verif(second.blesse and second.vivant, "un autre coup le terrifie de nouveau")
 	jeu.frapper(2)
 	verif(not second.vivant, "et blessé, le coup suivant le tue")
 	verif(moi.vivant and jeu.etat == jeu.PARTIE, "la partie continue tant qu'un porteur vit")
@@ -931,7 +956,7 @@ func _bruits() -> void:
 	var pres := Vector3(18.0, 0.0, 8.0)            # le fantôme, cinq mètres plus loin
 	for o in jeu.objets.values():                   # (un couloir vide : rien d'autre ne fera de bruit)
 		if absf(o.global_position.z - 8.0) < 1.2:
-			_mettre(o, Vector3(3.0 + (o.id % 20), 0.5, m.profondeur + 9.0))
+			_mettre(o, Vector3(2.5 + (o.id % 4) * 1.6, 0.5, m.profondeur + 2.0 + ((o.id / 4) % 6) * 1.6))      # (à l'écart du camion)
 	await _attendre(1.0)
 	# immobile : rien
 	moi.pilote = false
@@ -995,7 +1020,7 @@ func _bruits() -> void:
 	jeu.tactile.vecteur = Vector2.ZERO
 	verif(bruit_max > R.BRUIT_COURSE + 0.5 and _entendu(moi.global_position), "une course contre un mur : il s'y cogne, et cela s'entend plus loin que sa course (%.0f m)" % bruit_max)
 	_pilote(moi)
-	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 6.0)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
 	await _attendre(0.4)
 	# un meuble : un petit choc s'entend sans rien casser, un grand casse
 	var vase = _trouver("vase")
@@ -1154,7 +1179,7 @@ func _etages() -> void:
 	_mettre(carton, Vector3(3.0, 0.3, m.profondeur + 3.0))
 	# le fantôme, d'un niveau à l'autre
 	_pilote(moi)
-	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 6.0)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
 	var chose = jeu.chose
 	chose.reveiller()
 	chose._repue = 0.0

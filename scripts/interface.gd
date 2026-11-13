@@ -47,6 +47,7 @@ var _mort: Label
 var _fin_texte: Label
 var _fin_rejouer: Button
 var _aide: Label
+var _trouble: ColorRect
 var _boutique: Control
 var _boutique_lignes: VBoxContainer
 var _boutique_caisse: Label
@@ -368,7 +369,43 @@ func _faire_fin() -> void:
 	_bouton(_fin, "Retour au menu", func(): quitter.emit())
 
 
+# la peur bleue : tout l'écran se dédouble, ondule, bleuit, et se referme sur les bords
+const TROUBLE := """
+shader_type canvas_item;
+uniform sampler2D ecran : hint_screen_texture, filter_linear;
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	float t = TIME;
+	vec2 d = vec2(sin(t * 9.0 + uv.y * 30.0), cos(t * 7.0 + uv.x * 26.0)) * 0.004;
+	vec3 c = texture(ecran, uv + d).rgb * 0.34;
+	c += texture(ecran, uv - d * 2.0 + vec2(0.007, 0.0)).rgb * 0.22;
+	c += texture(ecran, uv + d * 2.0 - vec2(0.007, 0.0)).rgb * 0.22;
+	c += texture(ecran, uv + vec2(0.0, 0.008)).rgb * 0.11;
+	c += texture(ecran, uv - vec2(0.0, 0.008)).rgb * 0.11;
+	float gris = dot(c, vec3(0.3, 0.6, 0.1));
+	c = mix(c, vec3(gris * 0.7, gris * 0.88, gris * 1.3), 0.5);
+	float bord = smoothstep(0.3, 0.8, distance(uv, vec2(0.5)));
+	c *= 1.0 - bord * 0.75 * (0.8 + 0.2 * sin(t * 5.0));
+	COLOR = vec4(c, 1.0);
+}
+"""
+
+
+func trouble(oui: bool) -> void:
+	_trouble.visible = oui
+
+
 func _faire_partie() -> void:
+	_trouble = ColorRect.new()             # (avant tout le reste : l'heure et le quota restent nets par-dessus)
+	_trouble.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_trouble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ombre := Shader.new()
+	ombre.code = TROUBLE
+	var voile := ShaderMaterial.new()
+	voile.shader = ombre
+	_trouble.material = voile
+	_trouble.visible = false
+	_partie.add_child(_trouble)
 	_heure = _coin(Control.PRESET_CENTER_TOP, Vector2(-100, 12), Vector2(200, 40), 30)
 	_quota = _coin(Control.PRESET_TOP_LEFT, Vector2(18, 12), Vector2(420, 60), 22)
 	_quota.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -539,6 +576,7 @@ func salon(t: String, hote: bool, code: String = "") -> void:
 
 
 func partie() -> void:
+	_trouble.visible = false
 	_annonce.text = ""
 	_mort.text = ""
 	_vote.visible = false

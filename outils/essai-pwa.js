@@ -98,6 +98,14 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   verif(grande && grande.meubles >= 250 && apres.mailles > 100 && apres.mailles < 700 && clarte > 20,
     `${grande && grande.meubles} objets, ${apres && apres.mailles} maillages à l'écran, et l'image n'est pas noire (clarté ${clarte.toFixed(0)} sur 255)`);
   // une nouvelle version est publiée : au rechargement suivant, c'est elle qu'on joue (et non l'ancienne, gardée sur l'appareil)
+  // la peur bleue : la vue se trouble (un filtre sur tout l'écran : s'il ne marchait pas dans un navigateur, l'écran serait noir)
+  await p.evaluate(e => { window.portefaix_ou = [e.joueurs['1'][0], 0.05, e.joueurs['1'][1], 0, 0, 1]; }, apres);
+  await p.waitForTimeout(2500);
+  const floue = await p.screenshot();
+  const clarte2 = await p.evaluate(async octets => { const b = await createImageBitmap(new Blob([new Uint8Array(octets)], { type: 'image/png' })); const c = new OffscreenCanvas(64, 36), x = c.getContext('2d');
+    x.drawImage(b, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return s / (d.length / 4) / 3; }, [...floue]);
+  verif(clarte2 > 8 && clarte2 < clarte && !Buffer.from(floue).equals(Buffer.from(image)), `la peur bleue : la vue se trouble et s'assombrit sur les bords, sans s'éteindre (clarté ${clarte2.toFixed(0)}, contre ${clarte.toFixed(0)})`);
+
   console.log('6. La boutique');
   await p.goto(BASE);
   await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);

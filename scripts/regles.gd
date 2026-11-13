@@ -85,7 +85,10 @@ const CHOSE_SOUFFLE := 10.0   # elle ne chasse pas plus longtemps d'une traite
 const CHOSE_PERTE := 2.5      # sans voir sa proie tout ce temps, elle renonce
 const CHOSE_REPUE := 10.0     # après un coup, elle rentre à sa tanière sans rien regarder
 const CHOSE_ALLONGE := 1.2
-const BLESSURE := 45.0        # le premier coup blesse ; passé ce temps, on est guéri. Blessé, le coup suivant tue.
+# la peur bleue : le premier coup du fantôme ne tue pas, il terrifie. On tremble, on voit trouble, on marche moins vite, et le coup
+# suivant tue. Cela ne passe pas tout seul : il faut retourner au camion, et y rester le temps de reprendre ses esprits.
+const PEUR_LENTEUR := 0.6     # ce qu'il reste de sa vitesse
+const REPRISE := 3.0          # le temps à passer au camion
 
 # le chat : un vote toutes les 40 secondes, 15 secondes pour voter (1, 2 ou 3)
 const VOTE_PAUSE := 40.0

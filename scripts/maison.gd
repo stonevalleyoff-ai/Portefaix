@@ -47,7 +47,8 @@ const SOLS := {"cave": Color(0.15, 0.14, 0.15), "garage": Color(0.4, 0.4, 0.41),
 	"couloir": Color(0.28, 0.2, 0.14), "buanderie": Color(0.42, 0.44, 0.45), "chaufferie": Color(0.24, 0.23, 0.22), "palier": Color(0.22, 0.16, 0.11)}
 const PAS := R.HAUTEUR + 0.3      # d'un plancher au suivant
 const CAGE := 10                  # la cage d'escalier, au bout du couloir : dix cases de long, quatre de large
-const COUR := 12                  # les lignes de cour devant la maison, clôturées
+const PLATEAU := 0.35             # la hauteur du plancher du camion
+const COUR := 14                  # les lignes de cour devant la maison, clôturées
 const PORTE_HAUT := 2.2
 
 var plan: Array = []              # les lignes du plan du rez-de-chaussée
@@ -102,8 +103,8 @@ func construire(graine: int) -> void:
 	largeur = plan[0].length()
 	var p0: int = plan[profondeur - 1].find("P")
 	porte_x = p0 + plan[profondeur - 1].count("P") * 0.5
-	zone = Rect2(porte_x - 2.5, profondeur + 1.5, 5.0, 4.5)
-	camion = Rect2(porte_x - 1.4, profondeur + 6.6, 2.8, 4.2)
+	zone = Rect2(porte_x - 1.95, profondeur + 5.0, 3.9, 5.9)      # le dedans de la caisse du camion : c'est là qu'on charge
+	camion = Rect2(porte_x - 2.1, profondeur + 5.0, 4.2, 7.7)     # tout le camion : sa caisse, ouverte vers la porte, puis sa cabine
 	seuil = Vector3(porte_x, 0.0, profondeur - 1.5)
 	_decor = StaticBody3D.new()
 	_decor.name = "Decor"
@@ -479,12 +480,18 @@ func dedans(p: Vector3) -> bool:
 	return p.x > 0.0 and p.x < largeur and p.z > 0.0 and p.z < profondeur
 
 
+# chargé : dans la caisse du camion, sur son plancher
 func dans_zone(p: Vector3) -> bool:
-	return zone.has_point(Vector2(p.x, p.z)) and p.y < 2.5
+	return zone.has_point(Vector2(p.x, p.z)) and p.y > PLATEAU - 0.1 and p.y < PLATEAU + 2.9
+
+
+# au camion, ou tout près : là où un porteur reprend ses esprits
+func pres_du_camion(p: Vector3) -> bool:
+	return camion.grow(2.5).has_point(Vector2(p.x, p.z)) and p.y > -1.0 and p.y < 4.0
 
 
 func depart(k: int) -> Vector3:
-	return Vector3(porte_x + [0.0, -1.5, 1.5][k % 3], 0.05, profondeur + 4.0 + float(k / 3) * 1.2)     # dans la zone, le premier face à la porte
+	return Vector3(porte_x + [0.0, -1.5, 1.5][k % 3], 0.05, profondeur + 2.2 + float(k / 3) * 0.9)     # entre la porte et le camion, le premier face à la porte
 
 
 # dans une pièce, ce qu'il faut laisser libre devant chacune de ses portes et de ses ouvertures (des rectangles, en mètres)
@@ -721,10 +728,10 @@ func _sol() -> void:
 	forme.position = Vector3(l * 0.5, -0.5, p + 60.0)
 	_decor.add_child(forme)
 	_matiere = "herbe"
-	_boite(_decor, Vector3(l * 0.5, -0.06, p + 10.0), Vector3(110.0, 0.1, 90.0), mat(Color(0.1, 0.15, 0.1)), false)          # l'herbe
+	_boite(_decor, Vector3(l * 0.5, -0.06, p + 44.9), Vector3(110.0, 0.1, 90.0), mat(Color(0.1, 0.15, 0.1)), false)          # l'herbe : devant la maison, pas dessous (elle bouchait l'escalier du sous-sol)
 	_matiere = "pierre"
 	_boite(_decor, Vector3(porte_x, -0.04, p + 1.0), Vector3(3.0, 0.1, 2.0), mat(Color(0.42, 0.42, 0.44)), false)            # le seuil
-	_boite(_decor, Vector3(porte_x, -0.045, p + 4.0), Vector3(2.2, 0.1, 5.0), mat(Color(0.3, 0.3, 0.32)), false)             # l'allée
+	_boite(_decor, Vector3(porte_x, -0.045, p + 2.6), Vector3(3.6, 0.1, 2.6), mat(Color(0.3, 0.3, 0.32)), false)             # l'allée
 	for n in niveaux:
 		_plancher(n, n == niveaux.min())
 	_plancher(niveaux.max() + 1, false)        # le toit
@@ -1017,31 +1024,72 @@ func _lampe(p: Vector2, n: int) -> void:
 	lampes.append({"lumiere": l, "ampoule": a, "niveau": n, "force": 0.0, "phase": randf() * TAU})
 
 
+# le camion de déménagement : une grande caisse ouverte vers la porte du manoir, où l'on monte par une rampe ; on charge dedans.
+# Sa cabine est au bout : c'est elle qu'on touche pour klaxonner.
 func _camion() -> void:
-	# la zone de chargement : quatre bandes jaunes au sol
-	var jaune := mat(Color(0.95, 0.75, 0.15), 0.6)
-	var z := zone
-	_boite(self, Vector3(z.position.x + z.size.x * 0.5, 0.02, z.position.y), Vector3(z.size.x, 0.04, 0.12), jaune, false)
-	_boite(self, Vector3(z.position.x + z.size.x * 0.5, 0.02, z.end.y), Vector3(z.size.x, 0.04, 0.12), jaune, false)
-	_boite(self, Vector3(z.position.x, 0.02, z.position.y + z.size.y * 0.5), Vector3(0.12, 0.04, z.size.y), jaune, false)
-	_boite(self, Vector3(z.end.x, 0.02, z.position.y + z.size.y * 0.5), Vector3(0.12, 0.04, z.size.y), jaune, false)
-	# le camion : une caisse ouverte vers la zone, une cabine, deux feux ; on klaxonne en le touchant
-	var corps := StaticBody3D.new()
-	corps.name = "Camion"
-	corps.collision_layer = 1
-	corps.collision_mask = 0
-	corps.set_meta("klaxon", true)
-	add_child(corps)
 	var k := camion
 	var cx := k.position.x + k.size.x * 0.5
-	_boite(corps, Vector3(cx, 1.6, k.position.y + 1.4), Vector3(k.size.x, 2.4, 2.8), mat(Color(0.75, 0.73, 0.68)))
-	_boite(corps, Vector3(cx, 1.2, k.end.y - 0.6), Vector3(k.size.x - 0.3, 1.9, 1.2), mat(Color(0.7, 0.25, 0.12)))
-	_boite(corps, Vector3(cx, 0.25, k.position.y + k.size.y * 0.5), Vector3(k.size.x - 0.4, 0.5, k.size.y - 0.4), mat(Color(0.06, 0.06, 0.07)))
-	var rouge := mat(Color(1.0, 0.15, 0.1), 2.0)
-	_boite(self, Vector3(cx - 1.1, 0.8, k.position.y - 0.03), Vector3(0.25, 0.18, 0.05), rouge, false)
-	_boite(self, Vector3(cx + 1.1, 0.8, k.position.y - 0.03), Vector3(0.25, 0.18, 0.05), rouge, false)
+	var z0 := k.position.y                         # l'arrière de la caisse
+	var long := zone.size.y + 0.1
+	var blanc := mat(Color(0.78, 0.76, 0.7))
+	var sombre := mat(Color(0.07, 0.07, 0.08))
+	var jaune := mat(Color(0.95, 0.75, 0.15), 0.6)
+	var caisse := StaticBody3D.new()
+	caisse.name = "Camion"
+	caisse.collision_layer = 1
+	caisse.collision_mask = 0
+	add_child(caisse)
+	_boite(caisse, Vector3(cx, PLATEAU * 0.5, z0 + long * 0.5), Vector3(k.size.x, PLATEAU, long), mat(Color(0.3, 0.24, 0.18)))                  # le plancher
+	for cote: float in [-1.0, 1.0]:                # les flancs
+		_boite(caisse, Vector3(cx + cote * (k.size.x * 0.5 - 0.06), PLATEAU + 1.4, z0 + long * 0.5), Vector3(0.12, 2.8, long), blanc)
+	_boite(caisse, Vector3(cx, PLATEAU + 1.4, z0 + long - 0.06), Vector3(k.size.x, 2.8, 0.12), blanc)                                           # le fond
+	_boite(caisse, Vector3(cx, PLATEAU + 2.86, z0 + long * 0.5), Vector3(k.size.x, 0.12, long), blanc)                                          # le toit
+	# la rampe : une pente douce, large, de la cour au plancher
+	var pente := Vector2(1.6, PLATEAU)
+	var angle := atan2(pente.y, pente.x)
+	var rampe := StaticBody3D.new()
+	rampe.name = "Rampe"
+	rampe.collision_layer = 1
+	rampe.collision_mask = 0
+	rampe.position = Vector3(cx, PLATEAU * 0.5 - cos(angle) * 0.04, z0 - pente.x * 0.5 + sin(angle) * 0.04)
+	rampe.rotation.x = -angle
+	add_child(rampe)
+	_boite(rampe, Vector3.ZERO, Vector3(3.5, 0.08, pente.length() + 0.05), mat(Color(0.34, 0.35, 0.37)))
+	for i in 3:                                    # ses bandes jaunes
+		_boite(rampe, Vector3(0, 0.045, -0.5 + i * 0.5), Vector3(3.5, 0.01, 0.1), jaune, false)
+	# la zone : un liseré jaune tout autour du plancher
+	var y := PLATEAU + 0.012
+	_boite(self, Vector3(cx, y, z0 + 0.08), Vector3(zone.size.x, 0.02, 0.14), jaune, false)
+	_boite(self, Vector3(cx, y, zone.end.y - 0.08), Vector3(zone.size.x, 0.02, 0.1), jaune, false)
+	for cote: float in [-1.0, 1.0]:
+		_boite(self, Vector3(cx + cote * (zone.size.x * 0.5 - 0.05), y, z0 + zone.size.y * 0.5), Vector3(0.1, 0.02, zone.size.y), jaune, false)
+	# la cabine, au bout : on klaxonne en la touchant
+	var cabine := StaticBody3D.new()
+	cabine.name = "Cabine"
+	cabine.collision_layer = 1
+	cabine.collision_mask = 0
+	cabine.set_meta("klaxon", true)
+	add_child(cabine)
+	var zc := z0 + long + 0.8
+	_boite(cabine, Vector3(cx, 1.35, zc), Vector3(k.size.x - 0.3, 2.3, 1.6), mat(Color(0.62, 0.16, 0.1)))
+	_boite(self, Vector3(cx, 1.9, zc + 0.81), Vector3(k.size.x - 0.9, 0.8, 0.03), mat(Color(0.1, 0.14, 0.2)), false)                           # le pare-brise
+	for cote: float in [-1.0, 1.0]:                # les vitres, les roues, les phares
+		_boite(self, Vector3(cx + cote * (k.size.x * 0.5 - 0.14), 1.9, zc), Vector3(0.03, 0.7, 0.9), mat(Color(0.1, 0.14, 0.2)), false)
+		_boite(self, Vector3(cx + cote * (k.size.x * 0.5 - 0.25), 0.3, zc), Vector3(0.36, 0.7, 0.9), sombre, false)
+		_boite(self, Vector3(cx + cote * (k.size.x * 0.5 + 0.02), 0.2, z0 + long - 1.3), Vector3(0.1, 0.5, 0.9), sombre, false)
+		_boite(self, Vector3(cx + cote * (k.size.x * 0.5 + 0.02), 0.2, z0 + 1.3), Vector3(0.1, 0.5, 0.9), sombre, false)
+		_boite(self, Vector3(cx + cote * 1.4, 0.75, zc + 0.82), Vector3(0.4, 0.22, 0.04), mat(Color(1.0, 0.95, 0.75), 1.5), false)
+		_boite(self, Vector3(cx + cote * (k.size.x * 0.5 - 0.06), PLATEAU + 2.3, z0 - 0.02), Vector3(0.12, 0.3, 0.04), mat(Color(1.0, 0.15, 0.1), 2.0), false)      # les feux arrière
+	# de la lumière : dans la caisse, et derrière, sur la rampe
+	var plafonnier := OmniLight3D.new()
+	plafonnier.position = Vector3(cx, PLATEAU + 2.4, z0 + long * 0.5)
+	plafonnier.light_color = Color(0.9, 0.92, 1.0)
+	plafonnier.light_energy = 1.3
+	plafonnier.omni_range = 6.5
+	add_child(plafonnier)
+	_boite(self, Vector3(cx, PLATEAU + 2.78, z0 + long * 0.5), Vector3(0.5, 0.05, 0.16), mat(Color(0.9, 0.95, 1.0), 2.5), false)
 	var phare := OmniLight3D.new()
-	phare.position = Vector3(cx, 2.9, k.position.y - 0.6)
+	phare.position = Vector3(cx, 3.4, z0 - 1.0)
 	phare.light_color = Color(0.8, 0.88, 1.0)
 	phare.light_energy = 1.1
 	phare.omni_range = 9.0

@@ -326,6 +326,8 @@ func _physics_process(dt: float) -> void:
 		var court: bool = (Input.is_physical_key_pressed(KEY_SHIFT) or doigt.court) and not accroupi and dir != Vector3.ZERO
 		var v: float = R.ACCROUPI if accroupi else (R.COURSE if court else R.MARCHE)
 		v *= frein()
+		if blesse:                     # la peur bleue : les jambes ne suivent plus
+			v *= R.PEUR_LENTEUR
 		var k := minf(1.0, dt * 12.0)
 		velocity.x = lerpf(velocity.x, dir.x * v, k)
 		velocity.z = lerpf(velocity.z, dir.z * v, k)
@@ -397,6 +399,11 @@ func _regarder(dt: float) -> void:
 	rotation.y = yaw
 	tete.rotation.x = pitch
 	tete.position.y = lerpf(tete.position.y, R.YEUX_ACCROUPI if accroupi else R.YEUX, minf(1.0, dt * 10.0))
+	if camera != null:                   # la peur bleue : la vue tremble
+		var t := Time.get_ticks_msec() / 1000.0
+		var tremble := 1.0 if blesse and vivant else 0.0
+		camera.rotation = Vector3(sin(t * 31.0) * 0.012 + sin(t * 4.3) * 0.02, sin(t * 27.0 + 1.0) * 0.012, sin(t * 3.1) * 0.035) * tremble
+		camera.h_offset = sin(t * 23.0) * 0.012 * tremble
 	torche.visible = torche_ok and torche_voulue and vivant
 
 

@@ -58,7 +58,7 @@ var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces
 var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
 var repit: float = R.REPIT       # la chose dort jusque-là (l'essai le repousse)
 var bras := {}                    # chez l'hôte : le porteur → ce qu'il reste à ses deux bras pour repousser
-var blessures := {}               # chez l'hôte : le porteur blessé → le temps qu'il lui reste à guérir
+var blessures := {}               # chez l'hôte : le porteur terrifié → depuis combien de temps il est revenu au camion
 var effets := {}                  # les sabotages en cours : nom → {reste, param}
 var _vote := {"ouvert": false, "options": [], "voix": [0, 0, 0], "reste": 0.0}
 var _poussees := {}
@@ -728,7 +728,7 @@ func frapper(qui: int) -> void:
 	if j.blesse:
 		tuer(qui)
 	else:
-		blessures[qui] = R.BLESSURE
+		blessures[qui] = 0.0
 		blessure.rpc(qui, true)
 
 
@@ -844,9 +844,10 @@ func blessure(qui: int, oui: bool) -> void:
 	if oui:
 		sons.jouer_a("choc", j.global_position + Vector3.UP, 8.0)
 	if qui == mon_id:
-		ui.mort("Blessé : un coup de plus et c'est fini. Il ne sort pas de la maison." if oui else "")
+		ui.mort("Peur bleue : retourne au camion reprendre tes esprits. Un coup de plus et c'est fini." if oui else "")
+		ui.trouble(oui)
 		if not oui:
-			ui.annoncer("Tu es guéri.")
+			ui.annoncer("Tu as repris tes esprits.")
 
 
 @rpc("authority", "call_local", "unreliable")
@@ -990,9 +991,13 @@ func _physics_process(dt: float) -> void:
 	chose.avancer(dt)
 	for qui in bras:
 		bras[qui] = [maxf(bras[qui][0] - dt, 0.0), maxf(bras[qui][1] - dt, 0.0)]
-	for qui in blessures.keys():
-		blessures[qui] -= dt
-		if blessures[qui] <= 0.0:
+	for qui in blessures.keys():           # la peur bleue ne passe qu'au camion : il faut y rester un moment
+		var apeure = joueurs.get(qui)
+		if apeure == null or not apeure.vivant:
+			blessures.erase(qui)
+			continue
+		blessures[qui] = blessures[qui] + dt if maison.pres_du_camion(apeure.global_position) else 0.0
+		if blessures[qui] >= R.REPRISE:
 			blessures.erase(qui)
 			blessure.rpc(qui, false)
 	_t_ecoute -= dt
@@ -1081,6 +1086,9 @@ func _temoigner(dt: float) -> void:
 			moi.velocity = Vector3.ZERO
 			moi.yaw = float(v[3])
 			moi.pitch = float(v[4])
+		if v.size() >= 6:                    # (et lui trouble la vue, ou non : la peur bleue, telle qu'on la voit)
+			moi.blesse = v[5] == "1"
+			ui.trouble(moi.blesse)
 
 
 func _process(dt: float) -> void:
