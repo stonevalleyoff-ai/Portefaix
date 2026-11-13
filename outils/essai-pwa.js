@@ -98,7 +98,15 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   verif(grande && grande.meubles >= 250 && apres.mailles > 100 && apres.mailles < 700 && clarte > 20,
     `${grande && grande.meubles} objets, ${apres && apres.mailles} maillages à l'écran, et l'image n'est pas noire (clarté ${clarte.toFixed(0)} sur 255)`);
   // une nouvelle version est publiée : au rechargement suivant, c'est elle qu'on joue (et non l'ancienne, gardée sur l'appareil)
-  console.log('6. La mise à jour');
+  console.log('6. La boutique');
+  await p.goto(BASE);
+  await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);
+  await cliquer('sans_compte'); await cliquer('boutique');
+  const rayon = await attendre(e => e.reperes.achat_chaussons && e.reperes.achat_leurre && e.reperes.retour_boutique, 15000);
+  verif(rayon && typeof rayon.argent === 'number', `au menu, la boutique s'ouvre sur ses articles (en caisse : ${rayon && rayon.argent} €)`);
+  await cliquer('retour_boutique');
+
+  console.log('7. La mise à jour');
   await p.goto(BASE);
   await attendre(e => e.etat === 'menu', 90000);
   const v1 = await p.evaluate(() => window.PORTEFAIX_VERSION);

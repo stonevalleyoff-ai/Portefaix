@@ -21,6 +21,8 @@ signal nouveau_mot_de_passe(nouveau: String, encore: String)
 signal page_compte                 # on change de page de compte : ce qui était écrit ne vaut plus
 signal salon_creer
 signal salon_rejoindre(code: String)
+signal vers_boutique
+signal achat(nom: String)
 
 var _menu: Control
 var _salon: Control
@@ -45,6 +47,14 @@ var _mort: Label
 var _fin_texte: Label
 var _fin_rejouer: Button
 var _aide: Label
+var _boutique: Control
+var _boutique_lignes: VBoxContainer
+var _boutique_caisse: Label
+var _boutique_avis: Label
+var _boutique_boutons := {}
+var _b_boutique: Button
+var _bourse_texte: Label
+var _fin_compte: Label
 var _connexion: Control
 var _creation: Control
 var _oubli: Control
@@ -85,6 +95,7 @@ func _ready() -> void:
 	_nouveau = _page(racine)
 	_salon = _page(racine)
 	_fin = _page(racine)
+	_boutique = _page(racine)
 	_partie = Control.new()
 	_partie.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_partie.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -95,6 +106,7 @@ func _ready() -> void:
 	_faire_salon()
 	_faire_partie()
 	_faire_fin()
+	_faire_boutique()
 	menu("")
 
 
@@ -161,6 +173,14 @@ func _faire_menu() -> void:
 	_pseudo.add_theme_font_size_override("font_size", 18)
 	_pseudo_ligne.add_child(_pseudo)
 	_bouton(_pseudo_ligne, "Garder ce pseudo", func(): pseudo_choisi.emit(_pseudo.text))
+	# la caisse, et la boutique
+	var ligne_bourse := HBoxContainer.new()
+	_menu.add_child(ligne_bourse)
+	_bourse_texte = Label.new()
+	_bourse_texte.add_theme_font_size_override("font_size", 18)
+	_bourse_texte.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ligne_bourse.add_child(_bourse_texte)
+	_b_boutique = _bouton(ligne_bourse, "La boutique", func(): vers_boutique.emit())
 	_b_seul = _bouton(_menu, "Jouer seul", func(): seul.emit())
 	_ligne_bloc = VBoxContainer.new()
 	_ligne_bloc.add_theme_constant_override("separation", 10)
@@ -205,7 +225,7 @@ func _faire_menu() -> void:
 	_micro.add_theme_font_size_override("font_size", 18)
 	_menu.add_child(_micro)
 	_aide = _texte(_menu, "ZQSD : marcher · Maj : courir (bruyant) · Ctrl : s'accroupir · Espace : sauter\n"
-		+ "E ou clic : prendre, poser · clic droit : lancer · F : torche · V : crier · Échap : libérer la souris", 15, Color(0.6, 0.62, 0.66))
+		+ "E ou clic : prendre, poser · clic droit : lancer · F : torche · V : crier · G : lancer un réveil · Échap : libérer la souris", 15, Color(0.6, 0.62, 0.66))
 
 
 func _faire_connexion() -> void:
@@ -295,8 +315,55 @@ func _faire_salon() -> void:
 	_bouton(_salon, "Retour", func(): quitter.emit())
 
 
+func _faire_boutique() -> void:
+	_texte(_boutique, "La boutique", 40, Color(1.0, 0.86, 0.5))
+	_boutique_caisse = _texte(_boutique, "", 22)
+	_boutique_avis = _texte(_boutique, "", 17, Color(1.0, 0.5, 0.4))
+	_boutique_lignes = VBoxContainer.new()
+	_boutique_lignes.add_theme_constant_override("separation", 8)
+	_boutique.add_child(_boutique_lignes)
+	_boutique_boutons["retour_boutique"] = _bouton(_boutique, "Retour", func(): quitter.emit())
+
+
+# la boutique, pour cette caisse : chaque article, son prix, ce qu'il fait, et s'il l'a déjà
+func boutique(bourse, avis: String = "") -> void:
+	_boutique_caisse.text = bourse.dire()
+	_boutique_caisse.add_theme_color_override("font_color", Color(0.86, 0.86, 0.82) if bourse.argent >= 0 else Color(1.0, 0.45, 0.35))
+	_boutique_avis.text = avis
+	_boutique_avis.visible = avis != ""
+	for c in _boutique_lignes.get_children():
+		_boutique_lignes.remove_child(c)
+		c.queue_free()
+	var retour: Button = _boutique_boutons["retour_boutique"]
+	_boutique_boutons = {"retour_boutique": retour}
+	for nom in R.BOUTIQUE:
+		var article: Dictionary = R.BOUTIQUE[nom]
+		var ligne := HBoxContainer.new()
+		_boutique_lignes.add_child(ligne)
+		var l := Label.new()
+		var a := ""
+		if bourse.a(nom):
+			a = "  (tu en as %d)" % bourse.combien(nom) if article.une_fois else "  (acquis)"
+		l.text = "%s — %d €%s\n%s" % [article.nom, article.prix, a, article.dit]
+		l.add_theme_font_size_override("font_size", 16)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ligne.add_child(l)
+		var b := _bouton(ligne, "Acheter", func(): achat.emit(nom))
+		b.disabled = bourse.argent < article.prix or (bourse.a(nom) and not article.une_fois) or bourse.combien(nom) >= R.STOCK_MAX
+		_boutique_boutons["achat_" + nom] = b
+	_montrer(_boutique)
+
+
+# au menu : ce qu'il a en caisse, ou ce qu'il doit
+func bourse(t: String, dette: bool) -> void:
+	_bourse_texte.text = t
+	_bourse_texte.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35) if dette else Color(0.86, 0.86, 0.82))
+
+
 func _faire_fin() -> void:
 	_fin_texte = _texte(_fin, "", 26)
+	_fin_compte = _texte(_fin, "", 16, Color(0.8, 0.8, 0.76))
 	_fin_rejouer = _bouton(_fin, "Une autre maison", func(): rejouer.emit())
 	_bouton(_fin, "Retour au menu", func(): quitter.emit())
 
@@ -349,7 +416,7 @@ func _coin(ancre: int, ou: Vector2, t: Vector2, corps: int) -> Label:
 
 
 func _montrer(page: Control) -> void:
-	for p in [_menu, _connexion, _creation, _oubli, _nouveau, _salon, _fin]:
+	for p in [_menu, _connexion, _creation, _oubli, _nouveau, _salon, _fin, _boutique]:
 		p.get_parent().get_parent().visible = p == page
 	_partie.visible = page == _partie
 
@@ -379,7 +446,9 @@ func reperes() -> Dictionary:
 	var vers := get_viewport().get_screen_transform()
 	var r := {}
 	var choses := {"email": _email, "mdp": _mdp, "connecter": _connexion_bouton, "sans_compte": _b_sans, "seul": _b_seul, "ouvrir": _ligne_creer, "code": _ligne_code,
-		"entrer": _b_entrer, "commencer": _salon_bouton}
+		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique}
+	for nom in _boutique_boutons:
+		choses[nom] = _boutique_boutons[nom]
 	for nom in _c:
 		choses[nom] = _c[nom]
 	for nom in choses:
@@ -476,8 +545,10 @@ func partie() -> void:
 	_montrer(_partie)
 
 
-func fin(t: String, hote: bool) -> void:
+func fin(t: String, hote: bool, compte_: String = "") -> void:
 	_fin_texte.text = t
+	_fin_compte.text = compte_
+	_fin_compte.visible = compte_ != ""
 	_fin_rejouer.visible = hote
 	_montrer(_fin)
 

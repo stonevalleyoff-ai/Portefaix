@@ -15,6 +15,7 @@ var principal
 var vivant := true
 var blesse := false           # un coup de la chose : le prochain tue
 var accroupi := false
+var discret := 1.0            # ce qu'il reste du bruit de ses pas (des chaussons)
 var bruit := 0.0              # le rayon, en mètres, où on l'entend
 var yaw := 0.0
 var pitch := 0.0
@@ -271,6 +272,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				torche_voulue = not torche_voulue
 			KEY_V:
 				crier()
+			KEY_G:
+				principal.lancer_leurre()
 			KEY_ESCAPE:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -357,7 +360,7 @@ func _physics_process(dt: float) -> void:
 			principal.vouloir("heurt", [b])
 		_chute = 0.0 if is_on_floor() else _chute
 		if dir != Vector3.ZERO and is_on_floor():
-			b = maxf(b, R.BRUIT_ACCROUPI if accroupi else (R.BRUIT_COURSE if court else R.BRUIT_PAS))
+			b = maxf(b, (R.BRUIT_ACCROUPI if accroupi else (R.BRUIT_COURSE if court else R.BRUIT_PAS)) * discret)
 			_pas -= dt * (v / R.MARCHE)
 			if _pas <= 0.0:
 				_pas = 0.5

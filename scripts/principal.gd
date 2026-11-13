@@ -15,6 +15,7 @@ const Sons = preload("res://scripts/sons.gd")
 const Interface = preload("res://scripts/interface.gd")
 const Tactile = preload("res://scripts/tactile.gd")
 const Compte = preload("res://scripts/compte.gd")
+const Bourse = preload("res://scripts/bourse.gd")
 const Salon = preload("res://scripts/salon.gd")
 const Amenagement = preload("res://scripts/amenagement.gd")
 const Essai = preload("res://scripts/essai.gd")
@@ -34,6 +35,9 @@ var sons
 var ui
 var tactile
 var compte
+var bourse = Bourse.new()         # la caisse de qui joue ici : ce qu'il a gagné, ce qu'il doit, ce qu'il a acheté
+var equipes := {}                 # chez l'hôte : ce que chaque porteur a emporté cette nuit
+var _bourse_de := "?"
 var salon
 var noms := {}                    # le numéro d'un joueur → son pseudo, tel qu'il l'a donné en entrant au salon
 var web := OS.has_feature("web")  # dans un navigateur : on joue seul (pas de port à ouvrir), le doigt ou le clavier
@@ -107,6 +111,11 @@ func _ready() -> void:
 		_sur_compte())
 	ui.vers_connexion.connect(ui.page_connexion)
 	ui.sans_compte.connect(func(): ui.menu(""))
+	ui.vers_boutique.connect(func(): ui.boutique(bourse))
+	ui.achat.connect(func(nom: String):
+		var refus: String = bourse.acheter(nom)
+		_dire_bourse()
+		ui.boutique(bourse, refus if refus != "" else "Acheté : %s." % R.BOUTIQUE[nom].nom))
 	salon = Salon.new()
 	salon.name = "Salon"
 	salon.principal = self
@@ -133,6 +142,9 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(func(): retour_menu("L'hôte a fermé la partie."))
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--essai"):
+			bourse.garder = false            # (les essais ne touchent pas à la caisse gardée sur l'appareil)
+			bourse.ouvrir("essai")
+			_bourse_de = "essai"
 			var e := Essai.new()
 			e.name = "Essai"
 			e.mode = a
@@ -160,7 +172,16 @@ func _ready() -> void:
 
 # --- le compte ---
 
+func _dire_bourse() -> void:
+	ui.bourse(bourse.dire(), bourse.argent < 0)
+
+
 func _sur_compte() -> void:
+	var a_qui: String = compte.id if compte.connecte else ""
+	if a_qui != _bourse_de:               # chaque compte a sa caisse (et qui joue sans compte, la sienne)
+		_bourse_de = a_qui
+		bourse.ouvrir(a_qui)
+		_dire_bourse()
 	var entre: bool = compte.connecte and not compte.occupe and ui.sur_un_compte()
 	ui.compte(compte.connecte, compte.nom(), compte.occupe, compte.erreur, compte.avis)
 	if compte.connecte and compte.a_changer and etat == MENU:
@@ -422,6 +443,15 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	etat = PARTIE
 	if serveur:
 		chat.recommencer()
+	# ce qu'on a acheté : les chaussons et la torche sont l'affaire de chacun ; le reste, l'hôte doit le savoir
+	equipes = {}
+	if moi != null:
+		moi.discret = R.CHAUSSONS if bourse.a("chaussons") else 1.0
+		if bourse.a("lampe"):
+			moi.torche.spot_range = 26.0
+			moi.torche.spot_angle = 38.0
+			moi.torche.light_energy = 3.0
+	vouloir("equipe", [bourse.equipement()])
 	micro.regler(ui.micro() and DisplayServer.get_name() != "headless")
 	sons.nuit(true)
 	ui.partie()
@@ -522,6 +552,22 @@ func _demande(qui: int, quoi: String, args: Array) -> void:
 			pousser(qui, ido)
 		"klaxon":
 			klaxonner(qui)
+		"equipe":
+			var e: Array = []
+			if args.size() >= 1 and typeof(args[0]) == TYPE_ARRAY:
+				for nom in args[0]:
+					if typeof(nom) == TYPE_STRING and R.BOUTIQUE.has(nom) and not e.has(nom):
+						e.append(nom)
+			equipes[qui] = e
+		"leurre":
+			if a_equipe(qui, "leurre") and args.size() >= 1 and typeof(args[0]) == TYPE_VECTOR3:
+				equipes[qui].erase("leurre")
+				var ou: Vector3 = args[0]
+				if ou.distance_to(joueurs[qui].global_position) > R.LEURRE_PORTEE + 3.0:
+					ou = joueurs[qui].global_position
+				chose.entendre(ou, R.LEURRE_BRUIT)
+				son_a.rpc("vote", ou, 4.0)
+				son_a.rpc("klaxon", ou, -6.0)
 		"heurt":                         # il s'est cogné, ou il est retombé : tout le monde l'entend, le fantôme aussi
 			var rayon := clampf(float(args[0]) if args.size() >= 1 and typeof(args[0]) in [TYPE_FLOAT, TYPE_INT] else 0.0, 0.0, 20.0)
 			chose.entendre(joueurs[qui].global_position, rayon)
@@ -635,10 +681,49 @@ func reperer(qui: int) -> void:
 	repere.rpc(qui, chose.global_position)
 
 
+# ce que ce porteur a emporté (chez l'hôte)
+func a_equipe(qui: int, nom: String) -> bool:
+	return equipes.has(qui) and equipes[qui].has(nom)
+
+
+# jusqu'où ses bras tiennent, et ce qu'il porte : des gants, des sangles
+func allonge(qui: int) -> float:
+	return R.BRAS_MAX + (R.GANTS if a_equipe(qui, "gants") else 0.0)
+
+
+func force(qui: int) -> float:
+	return R.FORCE_PORTEUR * (R.SANGLES if a_equipe(qui, "sangles") else 1.0)
+
+
+# le réveil à lancer : il sonne là où l'on regarde, et le fantôme y court
+func lancer_leurre() -> void:
+	if etat != PARTIE or moi == null or not moi.vivant or not bourse.a("leurre"):
+		return
+	var de: Vector3 = moi.tete.global_position
+	var vers: Vector3 = de + moi.vise() * R.LEURRE_PORTEE
+	var touche: Dictionary = moi.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(de, vers, R.COUCHE_DECOR))
+	bourse.consommer("leurre")
+	vouloir("leurre", [touche.position if not touche.is_empty() else vers])
+	ui.annoncer("Le réveil sonne là-bas. Il t'en reste %d." % bourse.combien("leurre"), 3.0)
+
+
+@rpc("authority", "call_local", "reliable")
+func trousse_servie() -> void:
+	bourse.consommer("trousse")
+	ui.annoncer("Ta trousse de secours t'a sauvé la mise. Elle est vide.", 4.0)
+
+
 # la chose touche un porteur : le premier coup blesse, le suivant tue
 func frapper(qui: int) -> void:
 	var j = joueurs.get(qui)
 	if j == null or not j.vivant:
+		return
+	if a_equipe(qui, "trousse") and not j.blesse:      # une trousse : ce coup-là ne blesse pas
+		equipes[qui].erase("trousse")
+		if qui == mon_id:
+			trousse_servie()
+		else:
+			trousse_servie.rpc_id(qui)
 		return
 	if j.blesse:
 		tuer(qui)
@@ -649,7 +734,16 @@ func frapper(qui: int) -> void:
 
 func finir(victoire: bool, raison: String) -> void:
 	if etat == PARTIE:
-		fin.rpc(victoire, charge, quota, raison)
+		# la facture : ce qu'on a chargé (rien, si personne n'est là pour conduire le camion), moins tout le reste
+		var morts := 0
+		for j in joueurs.values():
+			if not j.vivant:
+				morts += 1
+		var casse := 0
+		for o in objets.values():
+			casse += o.valeur_neuve - o.valeur
+		var recette: int = charge if morts < joueurs.size() else 0
+		fin.rpc(victoire, charge, quota, raison, R.facture(recette, quota, casse, morts))
 
 
 # --- ce que l'hôte redit à tous ---
@@ -766,7 +860,7 @@ func annonce(t: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func fin(victoire: bool, c: int, q: int, raison: String) -> void:
+func fin(victoire: bool, c: int, q: int, raison: String, facture: Dictionary = {}) -> void:
 	etat = FIN
 	gagne = victoire
 	charge = c
@@ -778,8 +872,23 @@ func fin(victoire: bool, c: int, q: int, raison: String) -> void:
 	for j in joueurs.values():
 		if j.vivant:
 			vivants += 1
+	# les comptes : la facture de la nuit, la part de chacun, et ce que cela fait à sa caisse
+	var comptes := ""
+	if facture.has("lignes"):
+		for l in facture.lignes:
+			comptes += "%s : %s%d €\n" % [l[0], "+" if l[1] >= 0 else "−", absi(l[1])]
+		var net: int = facture.net
+		var n: int = maxi(joueurs.size(), 1)
+		var part := int(floor(float(net) / n))
+		comptes += "\n%s : %s%d €" % ["Il reste" if net >= 0 else "Vous devez", "" if net >= 0 else "−", absi(net)]
+		if n > 1:
+			comptes += ", soit %s%d € chacun" % ["" if part >= 0 else "−", absi(part)]
+		for dit in bourse.encaisser(part):
+			comptes += "\n" + dit
+		comptes += "\n" + bourse.dire()
+		_dire_bourse()
 	ui.fin("%s\n\n%s\nChargé : %d € sur %d € demandés.\n%d porteur(s) sur %d voient le jour."
-		% ["LA MAISON EST VIDÉE" if victoire else "LA MAISON A GAGNÉ", raison, c, q, vivants, joueurs.size()], serveur)
+		% ["LA MAISON EST VIDÉE" if victoire else "LA MAISON A GAGNÉ", raison, c, q, vivants, joueurs.size()], serveur, comptes)
 
 
 # --- les sabotages ---
@@ -957,7 +1066,7 @@ func _temoigner(dt: float) -> void:
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
 		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
-		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
+		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "argent": bourse.argent, "achats": bourse.objets, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	if maison != null:
 		t["cage"] = [maison.cage.position.x, maison.cage.position.y, maison.cage.size.x, maison.cage.size.y]

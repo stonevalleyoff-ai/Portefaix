@@ -110,6 +110,59 @@ const BRAS_ECART := 0.24      # de combien les deux mains s'écartent sur ce qu'
 
 # la maison bonus : une nuit sur quatre, deux ou trois pièces de la maison ne sont pas ce qu'on attendait. Ce qu'on y trouve vaut très
 # cher, et ne compte pas dans le quota : c'est de la prime.
+# --- l'argent : ce que rapporte une nuit, et ce qu'il en reste ---
+# Ce qu'on a chargé est la recette. L'agence prend sa commission, le camion se loue, les cotisations tombent sur ce qui reste, la casse
+# est pour les porteurs, un quota manqué se paie, un porteur mort aussi ; et s'il reste quelque chose, l'impôt en prend sa part.
+# Le reste se partage entre les porteurs. S'il ne reste rien, c'est une dette.
+const COMMISSION := 0.30
+const FRAIS := [["La location du camion", 600], ["L'essence", 120], ["L'assurance", 180]]
+const COTISATIONS := 0.45
+const IMPOT := 0.25
+const PENALITE := 0.5         # de ce qui manque au quota
+const OBSEQUES := 500         # par porteur qui ne voit pas le jour
+const INTERETS := 0.10        # d'une dette, à chaque nuit
+const SAISIE := 5000          # passé cette dette, l'huissier saisit
+const STOCK_MAX := 3          # de ce qui ne sert qu'une fois
+# la boutique : ce qu'on garde, et ce qui ne sert qu'une fois
+const BOUTIQUE := {
+	"chaussons": {"nom": "des chaussons", "prix": 400, "une_fois": false, "dit": "Tes pas portent presque deux fois moins loin."},
+	"lampe": {"nom": "une grosse torche", "prix": 600, "une_fois": false, "dit": "Elle éclaire plus loin et plus large."},
+	"gants": {"nom": "des gants de cuir", "prix": 900, "une_fois": false, "dit": "Tes bras tiennent près d'un mètre de plus avant de s'arracher."},
+	"sangles": {"nom": "des sangles de portage", "prix": 1500, "une_fois": false, "dit": "Tu portes moitié plus lourd."},
+	"trousse": {"nom": "une trousse de secours", "prix": 300, "une_fois": true, "dit": "Le premier coup du fantôme ne te blesse pas. Sert une fois."},
+	"leurre": {"nom": "un réveil à lancer", "prix": 250, "une_fois": true, "dit": "Touche G : il sonne là où tu regardes, et le fantôme y court. Sert une fois."},
+}
+const CHAUSSONS := 0.6        # ce qu'il reste du bruit des pas
+const GANTS := 0.9            # ce que les bras tiennent de plus, en mètres
+const SANGLES := 1.5          # la force de qui en porte
+const LEURRE_PORTEE := 15.0   # jusqu'où on le lance
+const LEURRE_BRUIT := 24.0
+
+
+# la facture d'une nuit : ses lignes ([quoi, combien]), et ce qu'il reste à partager (ou à devoir)
+static func facture(recette: int, du: int, casse: int, morts: int) -> Dictionary:
+	var lignes: Array = [["Ce que vous avez chargé", recette]]
+	var commission := int(recette * COMMISSION)
+	lignes.append(["La commission de l'agence (%d %%)" % int(COMMISSION * 100), -commission])
+	for f in FRAIS:
+		lignes.append([f[0], -f[1]])
+	lignes.append(["Les cotisations (%d %%)" % int(COTISATIONS * 100), -int((recette - commission) * COTISATIONS)])
+	if casse > 0:
+		lignes.append(["La casse, à vos frais", -casse])
+	if recette < du:
+		lignes.append(["La pénalité : il manquait %d € au quota" % (du - recette), -int((du - recette) * PENALITE)])
+	if morts > 0:
+		lignes.append(["Les obsèques (%d)" % morts, -morts * OBSEQUES])
+	var net := 0
+	for l in lignes:
+		net += l[1]
+	if net > 0:
+		var impot := int(net * IMPOT)
+		lignes.append(["L'impôt (%d %% de ce qui reste)" % int(IMPOT * 100), -impot])
+		net -= impot
+	return {"lignes": lignes, "net": net}
+
+
 # l'étage et le sous-sol : ce qu'on y trouve compte pour un tiers dans le quota (il faut le descendre, ou le remonter, par l'escalier)
 const PART_ETAGES := 0.33
 const CHANCE_BONUS := 0.25

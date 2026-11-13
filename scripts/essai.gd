@@ -787,6 +787,7 @@ func _seul() -> void:
 	await _attendre(0.2)
 	jeu.bonus_voulu = []
 	await _bruits()
+	await _argent()
 	await _etages()
 	jeu.retour_menu()
 	verif(jeu.etat == jeu.MENU and jeu.monde == null and jeu.joueurs.is_empty(), "et l'on revient au menu")
@@ -817,6 +818,84 @@ func _suivre(vers: Vector3, delai: float) -> Array:
 			return [true, marches, (Time.get_ticks_msec() - t0) / 1000.0]
 		await get_tree().physics_frame
 	return [false, marches, delai]
+
+
+# l'argent : la facture d'une nuit, la caisse, la dette, la boutique, et ce que font les achats
+func _argent() -> void:
+	print("15. L'argent")
+	var b = jeu.bourse
+	# la facture, sur le papier
+	var bonne: Dictionary = R.facture(6000, 5000, 200, 0)
+	var maigre: Dictionary = R.facture(2000, 5000, 0, 1)
+	var pris := 6000 - int(bonne.net)
+	verif(bonne.net > 300 and bonne.net < 1500 and pris > 4500, "une bonne nuit : 6 000 € chargés, il en reste %d une fois l'agence, les frais, les cotisations, la casse et l'impôt servis (%d %% de pris)" % [bonne.net, pris * 100 / 6000])
+	verif(maigre.net < -1500, "une mauvaise : 2 000 € chargés pour un quota de 5 000, un mort : on doit %d €" % -int(maigre.net))
+	# une nuit jouée : la part va en caisse
+	b.argent = 0
+	b.objets = {}
+	jeu.lancer()
+	await _attendre(0.4)
+	jeu.repit = 1e9
+	jeu.chat.reste = 1e9
+	jeu.charge = jeu.quota + 3000
+	var attendu: int = R.facture(jeu.charge, jeu.quota, 0, 0).net
+	jeu.finir(true, "Le camion part, chargé.")
+	await _attendre(0.3)
+	verif(jeu.etat == jeu.FIN and b.argent == attendu and attendu > 0 and jeu.ui._fin_compte.text.contains("commission") and jeu.ui._fin_compte.text.contains("En caisse : %d €" % attendu),
+		"la nuit gagnée : l'écran de fin détaille la facture, et il reste %d € en caisse" % b.argent)
+	# la boutique
+	b.argent = 2000
+	jeu.ui.boutique(b)
+	var r: Dictionary = jeu.ui.reperes()
+	verif(r.has("achat_chaussons") and r.has("achat_sangles") and r.has("retour_boutique") and jeu.ui._boutique_caisse.text.contains("2000"), "la boutique : six articles, leur prix, et ce qu'on a en caisse")
+	jeu.ui.achat.emit("chaussons")
+	jeu.ui.achat.emit("trousse")
+	jeu.ui.achat.emit("leurre")
+	var refus: String = b.acheter("sangles")
+	var deja: String = b.acheter("chaussons")
+	verif(b.argent == 2000 - 400 - 300 - 250 and b.a("chaussons") and b.a("trousse") and b.a("leurre") and refus.contains("manque") and deja.contains("déjà"),
+		"on y achète des chaussons, une trousse et un réveil ; pas les sangles (%s) ni deux fois les chaussons" % refus.to_lower())
+	b.objets["sangles"] = 1
+	b.objets["gants"] = 1
+	b.objets["lampe"] = 1
+	# ce que font les achats, la nuit suivante
+	jeu.lancer()
+	await _attendre(0.4)
+	jeu.repit = 1e9
+	jeu.chat.reste = 1e9
+	var moi = jeu.moi
+	verif(is_equal_approx(moi.discret, R.CHAUSSONS) and moi.torche.spot_range > 20.0, "les chaussons étouffent ses pas, la grosse torche porte plus loin")
+	verif(is_equal_approx(jeu.force(1), R.FORCE_PORTEUR * R.SANGLES) and is_equal_approx(jeu.allonge(1), R.BRAS_MAX + R.GANTS), "l'hôte sait qu'il a des sangles (il porte %d N) et des gants (ses bras tiennent jusqu'à %.1f m)" % [int(jeu.force(1)), jeu.allonge(1)])
+	jeu.frapper(1)
+	await _attendre(0.1)
+	var sauve: bool = moi.vivant and not moi.blesse and not b.a("trousse")
+	jeu.frapper(1)
+	await _attendre(0.1)
+	verif(sauve and moi.blesse, "la trousse de secours : le premier coup ne le blesse pas, et elle est vide ; le suivant, si")
+	_pilote(moi)
+	moi.global_position = Vector3(13.0, 0.05, 8.0)
+	_tourner(moi, Vector3(3.0, 1.6, 8.0))
+	await _oreille(Vector3(22.0, 0.0, 8.0))
+	jeu.lancer_leurre()
+	await _attendre(0.1)
+	verif(not b.a("leurre") and jeu.chose.mode == jeu.chose.ENQUETE and jeu.chose._destination.x < 6.0, "le réveil à lancer : il sonne au bout du couloir, le fantôme y court, et il n'en reste plus")
+	# une mauvaise nuit : la dette, ses intérêts, l'huissier
+	b.argent = 100
+	jeu.charge = 0
+	jeu.tuer(1)
+	await _attendre(0.3)
+	var dette: int = -b.argent
+	verif(jeu.etat == jeu.FIN and dette > 1500 and jeu.ui._fin_compte.text.contains("Dette") and b.acheter("leurre").contains("crédit"), "une nuit perdue, rien de chargé, un mort : %d € de dette, et la boutique ne fait plus crédit" % dette)
+	b.argent = -1000
+	var dit: Array = b.encaisser(-500)
+	verif(b.argent == -1600 and dit.size() == 1, "la dette porte intérêt à chaque nuit : 1 000 € dus, une nuit à −500 €, on doit 1 600 €")
+	b.argent = -4900
+	b.objets = {"sangles": 1, "chaussons": 1}
+	dit = b.encaisser(-500)
+	verif(not b.a("sangles") and not b.a("chaussons") and b.argent == -4900 - 490 - 500 + 750 + 200 and dit.size() == 3,
+		"passé %d € de dette, l'huissier saisit ce qu'on a de plus cher, repris à moitié prix, jusqu'à repasser dessous : les sangles, puis les chaussons" % R.SAISIE)
+	b.argent = 0
+	b.objets = {}
 
 
 # le fantôme, éveillé, tranquille, à cette distance du porteur : a-t-il entendu, une fois ce délai passé ?

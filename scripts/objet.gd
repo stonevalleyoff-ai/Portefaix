@@ -372,7 +372,7 @@ func _physics_process(dt: float) -> void:
 			principal.lacher(prise[0], id, false)
 			return
 		var a := ancre(prise)
-		if j.epaule(prise[1]).distance_to(a) > R.BRAS_MAX:      # trop tendu : le bras s'arrache
+		if j.epaule(prise[1]).distance_to(a) > principal.allonge(prise[0]):      # trop tendu : le bras s'arrache
 			principal.arracher(prise[0], prise[1], id)
 			return
 		# chaque bras tire le meuble vers le point de prise de son porteur, de la moitié de la force de celui-ci
@@ -381,8 +381,9 @@ func _physics_process(dt: float) -> void:
 		if v.length() > R.PORT_VITESSE:
 			v = v.normalized() * R.PORT_VITESSE
 		var f := (v - linear_velocity) * mass * R.PORT_GAIN / n
-		if f.length() > R.FORCE_PORTEUR * 0.5:
-			f = f.normalized() * R.FORCE_PORTEUR * 0.5
+		var force: float = principal.force(prise[0]) * 0.5
+		if f.length() > force:
+			f = f.normalized() * force
 		apply_central_force(f)
 		if not mains.has(prise[0]):
 			mains[prise[0]] = [null, null]
