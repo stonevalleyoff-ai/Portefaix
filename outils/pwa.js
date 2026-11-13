@@ -12,6 +12,10 @@
 const fs = require('fs'), path = require('path');
 const SITE = path.resolve(process.argv[2] || 'site'), ici = f => path.join(SITE, f), lire = f => fs.readFileSync(ici(f), 'utf8');
 const NUIT = '#030408';
+// la version : la date de la construction, et le commit s'il y en a un
+let commit = '';
+try { commit = require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { /* pas de dépôt */ }
+const VERSION = new Date().toISOString().slice(0, 16).replace('T', ' ') + (commit ? ' · ' + commit : '');
 
 // 1. le service worker
 let sw = lire('index.service.worker.js');
@@ -28,6 +32,11 @@ for (const [tout, nom, liste] of listes) {
 const cherche = 'let cached = await cache.match(event.request);';
 if (!sw.includes(cherche)) { console.error('pwa.js : le service worker de Godot a changé de forme'); process.exit(1); }
 sw = sw.replace(cherche, cherche + '\n\t\t\t\tif (cached == null && isNavigate) {\n\t\t\t\t\tcached = await cache.match(CACHED_FILES[0]);\n\t\t\t\t}');
+// (une nouvelle version prend la place de l'ancienne tout de suite : sans cela, elle attendait que tous les onglets du jeu soient fermés,
+// et l'on rejouait l'ancienne en croyant l'avoir rechargée)
+const installe = "event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHED_FILES)));", active = "return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();";
+if (!sw.includes(installe) || !sw.includes(active)) { console.error('pwa.js : le service worker de Godot a changé de forme'); process.exit(1); }
+sw = sw.replace(installe, 'self.skipWaiting();\n\t' + installe).replace(active, active + '\n\t}).then(function () {\n\t\treturn self.clients.claim();');
 fs.writeFileSync(ici('index.service.worker.js'), sw);
 
 // 2. le manifeste
@@ -47,7 +56,18 @@ page = page.replace('<html lang="en">', '<html lang="fr">').replace('</title>', 
 		<meta name="mobile-web-app-capable" content="yes">
 		<meta name="apple-mobile-web-app-capable" content="yes">
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-		<meta name="apple-mobile-web-app-title" content="Portefaix">`);
+		<meta name="apple-mobile-web-app-title" content="Portefaix">
+		<script>
+// la version de cette construction, que le jeu affiche ; et la mise à jour : quand une nouvelle version prend la main, la page se
+// recharge d'elle-même, une fois, pour la jouer
+window.PORTEFAIX_VERSION = ${JSON.stringify(VERSION)};
+if ('serviceWorker' in navigator) {
+	const avait = !!navigator.serviceWorker.controller;
+	let fait = false;
+	navigator.serviceWorker.addEventListener('controllerchange', () => { if (avait && !fait) { fait = true; location.reload(); } });
+	navigator.serviceWorker.getRegistration().then((r) => { if (r) r.update(); }).catch(() => {});
+}
+		</script>`);
 if (page === avant || !page.includes('rel="manifest"')) { console.error('pwa.js : la page de Godot a changé de forme'); process.exit(1); }
 fs.writeFileSync(ici('index.html'), page);
 

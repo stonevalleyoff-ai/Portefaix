@@ -392,6 +392,20 @@ func reperes() -> Dictionary:
 
 # --- les écrans ---
 
+# la version du jeu, en petit, en bas à droite de tous les écrans : on sait laquelle on a sous les yeux
+func version(t: String) -> void:
+	var l := Label.new()
+	l.text = t
+	l.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	l.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.position += Vector2(-10, -6)
+	l.add_theme_font_size_override("font_size", 12)
+	l.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(l)
+
+
 func menu(avis: String) -> void:
 	_avis.text = avis
 	_avis.visible = avis != ""

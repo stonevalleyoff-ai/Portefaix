@@ -13,13 +13,15 @@ let ok = true, n = 0;
 const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  ✗ ') + m); };
 
 (async () => {
-  let servis = 0;
+  let servis = 0, suivante = null;
   const serveur = http.createServer((req, res) => {
     const u = req.url.split('?')[0];
     if (!u.startsWith('/Portefaix/')) { res.writeHead(404); return res.end(); }
-    const nom = u.slice('/Portefaix/'.length) || 'index.html', f = path.join(SITE, path.normalize(nom));
+    const nom = u.slice('/Portefaix/'.length) || 'index.html';
+    let f = path.join(SITE, path.normalize(nom));
     if (!f.startsWith(SITE) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
-    servis++;
+    if (suivante && fs.existsSync(path.join(suivante, path.normalize(nom)))) f = path.join(suivante, path.normalize(nom));      // (la version d'après, une fois publiée)
+    if (nom !== 'index.service.worker.js') servis++;      // (le navigateur redemande le service worker à chaque visite, pour voir s'il a changé : ce n'est pas le jeu qui demande)
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' });
     res.end(fs.readFileSync(f));
   });
@@ -95,6 +97,23 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   const apres = await etat();
   verif(grande && grande.meubles >= 250 && apres.mailles > 100 && apres.mailles < 700 && clarte > 20,
     `${grande && grande.meubles} objets, ${apres && apres.mailles} maillages à l'écran, et l'image n'est pas noire (clarté ${clarte.toFixed(0)} sur 255)`);
+  // une nouvelle version est publiée : au rechargement suivant, c'est elle qu'on joue (et non l'ancienne, gardée sur l'appareil)
+  console.log('6. La mise à jour');
+  await p.goto(BASE);
+  await attendre(e => e.etat === 'menu', 90000);
+  const v1 = await p.evaluate(() => window.PORTEFAIX_VERSION);
+  const os = require('os'), dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'portefaix-'));
+  fs.writeFileSync(path.join(dossier, 'index.html'), fs.readFileSync(path.join(SITE, 'index.html'), 'utf8').replace(JSON.stringify(v1), JSON.stringify('la suivante')));
+  fs.writeFileSync(path.join(dossier, 'index.service.worker.js'), fs.readFileSync(path.join(SITE, 'index.service.worker.js'), 'utf8').replace(/const CACHE_VERSION = '[^']*'/, "const CACHE_VERSION = 'la-suivante'"));
+  suivante = dossier;
+  await p.reload();                              // un seul rechargement : la page s'aperçoit de la nouvelle version, et se recharge d'elle-même
+  let v2 = null;
+  for (let i = 0; i < 240 && v2 !== 'la suivante'; i++) { await p.waitForTimeout(500); v2 = await p.evaluate(() => window.PORTEFAIX_VERSION).catch(() => null); }
+  const caches_ = await p.evaluate(() => caches.keys()).catch(() => []);
+  verif(v1 && v2 === 'la suivante' && caches_.length === 1 && caches_[0].endsWith('la-suivante') && await attendre(e => e.etat === 'menu', 90000),
+    `on jouait « ${v1} » ; une nouvelle version publiée, un rechargement suffit pour la jouer, et l'ancienne est effacée de l'appareil`);
+  suivante = null;
+  fs.rmSync(dossier, { recursive: true, force: true });
   verif(!erreurs.length, 'aucune erreur dans la page' + (erreurs.length ? ' ; ' + erreurs.slice(0, 3).join(' | ') : ''));
 
   console.log(`\n${ok ? 'Tout passe' : 'ÉCHEC'} : ${n} vérifications`);

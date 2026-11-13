@@ -152,6 +152,10 @@ func _ready() -> void:
 	if not compte.connecte:
 		await compte.reprendre()
 	_sur_compte()
+	if web:                              # (la page dit de quelle construction elle est : outils/pwa.js)
+		var v = JavaScriptBridge.eval("window.PORTEFAIX_VERSION || ''", true)
+		if typeof(v) == TYPE_STRING and v != "":
+			ui.version("version " + v)
 
 
 # --- le compte ---
@@ -955,7 +959,19 @@ func _temoigner(dt: float) -> void:
 		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
 		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
+	if maison != null:
+		t["cage"] = [maison.cage.position.x, maison.cage.position.y, maison.cage.size.x, maison.cage.size.y]
+		t["pas"] = maison.PAS
 	JavaScriptBridge.eval("window.portefaix=" + JSON.stringify(t) + ";", true)
+	# pour les essais dans un navigateur : « window.portefaix_ou = [x, y, z, yaw, pitch] » pose le joueur là
+	var pose = JavaScriptBridge.eval("(function(){var o=window.portefaix_ou;window.portefaix_ou=null;return o?o.join(','):''})()", true)
+	if moi != null and typeof(pose) == TYPE_STRING and pose != "":
+		var v: PackedStringArray = pose.split(",")
+		if v.size() >= 5:
+			moi.global_position = Vector3(float(v[0]), float(v[1]), float(v[2]))
+			moi.velocity = Vector3.ZERO
+			moi.yaw = float(v[3])
+			moi.pitch = float(v[4])
 
 
 func _process(dt: float) -> void:
