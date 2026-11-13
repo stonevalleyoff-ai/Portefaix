@@ -48,6 +48,10 @@ var _fin_texte: Label
 var _fin_rejouer: Button
 var _aide: Label
 var _trouble: ColorRect
+var _screamer: Control
+var _screamer_face: Control
+var _screamer_gueule: Control
+var _screamer_reste := 0.0
 var _boutique: Control
 var _boutique_lignes: VBoxContainer
 var _boutique_caisse: Label
@@ -108,6 +112,7 @@ func _ready() -> void:
 	_faire_partie()
 	_faire_fin()
 	_faire_boutique()
+	_faire_screamer(racine)
 	menu("")
 
 
@@ -391,6 +396,72 @@ void fragment() {
 """
 
 
+# le screamer : quand le fantôme vous attrape, sa face vous saute au visage, d'un coup, et hurle
+const SCREAMER := 0.85            # sa durée, en secondes
+
+func _faire_screamer(racine: Control) -> void:
+	_screamer = Control.new()
+	_screamer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_screamer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screamer.visible = false
+	racine.add_child(_screamer)            # (en dernier : par-dessus tout)
+	var noir := ColorRect.new()
+	noir.color = Color(0.0, 0.0, 0.0, 0.93)
+	noir.set_anchors_preset(Control.PRESET_FULL_RECT)
+	noir.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screamer.add_child(noir)
+	_screamer_face = Control.new()         # une face de 400 sur 560, dessinée autour de son milieu
+	_screamer_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screamer.add_child(_screamer_face)
+	var os := Color(0.8, 0.79, 0.72)
+	var creux := Color(0.03, 0.02, 0.02)
+	var sang := Color(1.0, 0.1, 0.05)
+	var morceaux := [
+		[Rect2(-170, -280, 340, 300), os], [Rect2(-200, -220, 400, 200), os], [Rect2(-130, 0, 260, 120), os.darkened(0.12)],      # le crâne, les pommettes
+		[Rect2(-150, -150, 110, 120), creux], [Rect2(40, -150, 110, 120), creux],                                                    # les orbites
+		[Rect2(-118, -112, 44, 44), sang], [Rect2(74, -112, 44, 44), sang], [Rect2(-104, -98, 16, 16), Color(1, 0.9, 0.6)], [Rect2(88, -98, 16, 16), Color(1, 0.9, 0.6)],
+		[Rect2(-22, -20, 18, 50), creux], [Rect2(4, -20, 18, 50), creux],                                                            # le nez
+		[Rect2(-200, -60, 30, 220), os.darkened(0.3)], [Rect2(170, -60, 30, 220), os.darkened(0.3)],                                  # des mèches
+	]
+	for m in morceaux:
+		_morceau(_screamer_face, m[0], m[1])
+	_screamer_gueule = Control.new()       # la gueule : elle s'ouvre
+	_screamer_gueule.position = Vector2(0, 60)
+	_screamer_gueule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screamer_face.add_child(_screamer_gueule)
+	_morceau(_screamer_gueule, Rect2(-110, 0, 220, 200), creux)
+	_morceau(_screamer_gueule, Rect2(-60, 60, 120, 120), Color(0.35, 0.02, 0.03))
+	for k in 7:                            # les dents, en haut et en bas
+		_morceau(_screamer_gueule, Rect2(-104 + k * 30, 0, 22, 34 + (k % 2) * 14), os)
+		_morceau(_screamer_gueule, Rect2(-104 + k * 30, 200 - 30 - (k % 3) * 8, 22, 30 + (k % 3) * 8), os.darkened(0.1))
+
+
+func _morceau(parent: Control, r: Rect2, c: Color) -> void:
+	var m := ColorRect.new()
+	m.color = c
+	m.position = r.position
+	m.size = r.size
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(m)
+
+
+func screamer() -> void:
+	_screamer_reste = SCREAMER
+	_screamer.visible = true
+	_animer_screamer()
+
+
+func _animer_screamer() -> void:
+	var a := 1.0 - _screamer_reste / SCREAMER          # de 0 à 1
+	var ecran := get_viewport().get_visible_rect().size
+	var grandeur := ecran.y / 560.0 * lerpf(0.7, 2.4, 1.0 - pow(1.0 - a, 3.0))      # elle arrive très vite, puis vous colle
+	_screamer_face.scale = Vector2(grandeur, grandeur)
+	_screamer_face.position = ecran * 0.5 + Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 16.0 * (1.0 - a) + Vector2(0, 40.0 * grandeur)
+	_screamer_face.rotation = randf_range(-0.05, 0.05)
+	_screamer_gueule.scale = Vector2(1.0, lerpf(0.5, 1.25, minf(1.0, a * 4.0)))
+	_screamer.modulate.a = 1.0 if a < 0.75 else (1.0 - a) / 0.25
+
+
 func trouble(oui: bool) -> void:
 	_trouble.visible = oui
 
@@ -632,6 +703,12 @@ func vote(ouvert: bool, options: Array, voix: Array, reste: float) -> void:
 
 
 func _process(dt: float) -> void:
+	if _screamer_reste > 0.0:
+		_screamer_reste -= dt
+		if _screamer_reste <= 0.0:
+			_screamer.visible = false
+		else:
+			_animer_screamer()
 	if _annonce_reste > 0.0:
 		_annonce_reste -= dt
 		if _annonce_reste <= 0.0:

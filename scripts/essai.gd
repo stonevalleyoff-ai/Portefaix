@@ -895,9 +895,12 @@ func _argent() -> void:
 	jeu.frapper(1)
 	await _attendre(0.1)
 	var sauve: bool = moi.vivant and not moi.blesse and not b.a("trousse")
+	await _attendre(jeu.ui.SCREAMER + 0.2)
+	var passe: bool = not jeu.ui._screamer.visible
 	jeu.frapper(1)
 	await _attendre(0.1)
 	verif(sauve and moi.blesse, "la trousse de secours : le premier coup ne le blesse pas, et elle est vide ; le suivant, si")
+	verif(passe and jeu.ui._screamer.visible and jeu.ui._screamer_face.scale.x > 0.5 and jeu.ui._trouble.visible, "chaque fois qu'il l'attrape, sa face lui saute au visage (moins d'une seconde), puis la vue reste trouble")
 	_pilote(moi)
 	moi.global_position = Vector3(13.0, 0.05, 8.0)
 	_tourner(moi, Vector3(3.0, 1.6, 8.0))
@@ -993,9 +996,9 @@ func _bruits() -> void:
 	# un saut : la réception
 	moi.global_position = couloir
 	moi.velocity = Vector3.ZERO
-	await _attendre(0.5)
+	await _attendre(1.2)           # (le bruit d'une course met près d'une seconde à retomber)
 	await _oreille(pres)
-	verif(jeu.chose.mode == jeu.chose.RODE, "arrêté, il se tait de nouveau")
+	verif(jeu.chose.mode == jeu.chose.RODE and moi.bruit < 0.5, "arrêté, il se tait de nouveau")
 	jeu.tactile.saut = true
 	await _images(3)
 	jeu.tactile.saut = false

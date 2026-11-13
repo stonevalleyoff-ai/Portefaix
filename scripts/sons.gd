@@ -20,6 +20,7 @@ func _ready() -> void:
 	_brefs["pas"] = _wav(_frappe(0.09, 95.0, 0.5))
 	_brefs["choc"] = _wav(_frappe(0.28, 70.0, 0.7))
 	_brefs["frotte"] = _wav(_raclement(0.4))
+	_brefs["screamer"] = _wav(_hurlement(1.1))
 	_brefs["casse"] = _wav(_eclats(0.45))
 	_brefs["porte"] = _wav(_frappe(0.4, 48.0, 0.9))
 	_brefs["vote"] = _wav(_notes([660.0, 880.0], 0.09, 0.0))
@@ -144,6 +145,24 @@ func _notes(hz: Array, pas: float, avec: float) -> PackedFloat32Array:
 		if avec > 0.0:
 			v += signf(sin(TAU * avec * t)) * 0.25
 		d[i] = v * e
+	return d
+
+
+# le cri du fantôme en pleine figure : strident, qui monte, tremblé, sur un souffle rauque ; il attaque d'un coup
+func _hurlement(duree: float) -> PackedFloat32Array:
+	var d := _vide(duree)
+	var phase := 0.0
+	var phase2 := 0.0
+	var rauque := 0.0
+	for i in d.size():
+		var a := float(i) / d.size()
+		var t := float(i) / TAUX
+		var hz := lerpf(520.0, 1350.0, sqrt(a)) * (1.0 + 0.06 * sin(TAU * 31.0 * t))
+		phase += hz / TAUX
+		phase2 += hz * 1.493 / TAUX
+		rauque = lerpf(rauque, _r.randf_range(-1.0, 1.0), 0.5)
+		var forme := minf(1.0, t * 80.0) * pow(1.0 - a, 0.6)
+		d[i] = clampf(((fmod(phase, 1.0) * 2.0 - 1.0) * 0.55 + (fmod(phase2, 1.0) * 2.0 - 1.0) * 0.35 + rauque * 0.5) * 1.6, -1.0, 1.0) * forme
 	return d
 
 

@@ -709,8 +709,15 @@ func lancer_leurre() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func trousse_servie() -> void:
+	_screamer()
 	bourse.consommer("trousse")
 	ui.annoncer("Ta trousse de secours t'a sauvé la mise. Elle est vide.", 4.0)
+
+
+# le fantôme vient de vous attraper : sa face vous saute au visage, et hurle
+func _screamer() -> void:
+	ui.screamer()
+	sons.jouer("screamer", 6.0)
 
 
 # la chose touche un porteur : le premier coup blesse, le suivant tue
@@ -823,6 +830,8 @@ func mort(qui: int) -> void:
 	j.mourir()
 	sons.jouer_a("mort", j.global_position + Vector3.UP, 4.0)
 	if qui == mon_id:
+		_screamer()
+		ui.trouble(false)
 		ui.mort("Le fantôme t'a pris. Tu hantes la maison : %s pour pousser les petits objets." % ("le bouton Pousser" if tactile.actif else "E"))
 	else:
 		ui.annoncer("%s ne répond plus." % j.nom)
@@ -844,6 +853,8 @@ func blessure(qui: int, oui: bool) -> void:
 	if oui:
 		sons.jouer_a("choc", j.global_position + Vector3.UP, 8.0)
 	if qui == mon_id:
+		if oui:
+			_screamer()
 		ui.mort("Peur bleue : retourne au camion reprendre tes esprits. Un coup de plus et c'est fini." if oui else "")
 		ui.trouble(oui)
 		if not oui:
