@@ -252,7 +252,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			return
 		if _prise_le < 0:
 			_prise_le = Time.get_ticks_msec()
-		if Time.get_ticks_msec() - _prise_le < 250 or e.relative.length() > 300.0:
+		if Time.get_ticks_msec() - _prise_le < 250 or not e.relative.is_finite() or e.relative.length() > 300.0:
 			return
 		yaw -= e.relative.x * R.SOURIS
 		pitch = clampf(pitch - e.relative.y * R.SOURIS, -1.4, 1.4)
@@ -388,6 +388,9 @@ func frein() -> float:
 
 
 func _regarder(dt: float) -> void:
+	if not is_finite(yaw) or not is_finite(pitch):      # (une souris qui rend n'importe quoi ne doit pas éteindre l'écran)
+		yaw = 0.0
+		pitch = 0.0
 	rotation.y = yaw
 	tete.rotation.x = pitch
 	tete.position.y = lerpf(tete.position.y, R.YEUX_ACCROUPI if accroupi else R.YEUX, minf(1.0, dt * 10.0))

@@ -67,6 +67,7 @@ var _t_vote := 0.0
 var _t_coeur := 0.0
 var _t_temoin := 0.0
 var _t_niveaux := 0.0
+var graine_jouee := 0             # la graine de la maison où l'on joue
 
 
 func _ready() -> void:
@@ -367,6 +368,10 @@ func _au_hasard() -> int:
 			voulu = a.trim_prefix("--bonus=")
 	if web and voulu == "":
 		voulu = str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('bonus') || ''", true))
+	if web:                                      # « ?graine=1234 » : cette maison-là (pour retrouver celle où quelque chose cloche)
+		var dite := str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('graine') || ''", true))
+		if dite.is_valid_int() and int(dite) > 0:
+			return int(dite)
 	var sortes: Array = Array(voulu.split(",", false)).filter(func(s): return R.BONUS.has(s)).slice(0, 2)
 	if voulu != "" and sortes.is_empty():        # « ?bonus=oui » : n'importe laquelle, mais une maison bonus
 		sortes = [""]
@@ -382,6 +387,7 @@ func _au_hasard() -> int:
 
 @rpc("authority", "call_local", "reliable")
 func commencer(graine: int, ids: Array, pseudos: Array) -> void:
+	graine_jouee = graine
 	_vider()
 	mon_id = multiplayer.get_unique_id()
 	serveur = multiplayer.is_server()
@@ -947,7 +953,7 @@ func _temoigner(dt: float) -> void:
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
 		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
-		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime,
+		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	JavaScriptBridge.eval("window.portefaix=" + JSON.stringify(t) + ";", true)
 
@@ -976,30 +982,29 @@ func _process(dt: float) -> void:
 
 # À chaque niveau ses lampes : ce qui bouge (les meubles, les porteurs, le fantôme) passe sur la couche du niveau où il est, pour n'être
 # éclairé que par elles. Et l'on n'allume ni ne dessine ce qui est aux autres niveaux, sauf autour de l'escalier quand on en est près.
+# combien de maillages à l'écran (les essais dans un navigateur s'assurent qu'on reste loin du millier)
+func _mailles() -> int:
+	if monde == null:
+		return 0
+	var n := 0
+	var pile: Array = [monde]
+	while not pile.is_empty():
+		var noeud: Node = pile.pop_back()
+		if noeud is Node3D and not noeud.visible:
+			continue
+		if noeud is MeshInstance3D:
+			n += 1
+		pile.append_array(noeud.get_children())
+	return n
+
+
 func _niveler() -> void:
 	if maison.niveaux.size() < 2:
 		return
 	maison.regarder_de(moi.global_position)
 	for o in objets.values():
 		var n: int = maison.niveau_de(o.global_position.y)
-		_coucher(o, n)
 		o.visible = maison.en_vue(o.global_position, n) or not o.porteurs.is_empty()
-	for j in joueurs.values():
-		_coucher(j, maison.niveau_de(j.global_position.y))
-	_coucher(chose, maison.niveau_de(chose.global_position.y))
-
-
-func _coucher(quoi: Node, n: int) -> void:
-	if quoi.get_meta("niveau", 0) == n:
-		return
-	quoi.set_meta("niveau", n)
-	var couche: int = maison.couche(n)
-	var pile: Array = [quoi]
-	while not pile.is_empty():
-		var noeud: Node = pile.pop_back()
-		if noeud is MeshInstance3D:
-			noeud.layers = couche
-		pile.append_array(noeud.get_children())
 
 
 # ce que le joueur regarde, et ce qu'il peut en faire

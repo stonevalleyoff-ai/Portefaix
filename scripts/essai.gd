@@ -1031,7 +1031,11 @@ func _etages() -> void:
 	var arrive: bool = await _avancer(moi, 1.0, monte.haut.x)
 	verif(arrive and absf(moi.global_position.y - H) < 0.1 and moi.is_on_floor(), "le porteur monte les marches à pied, jusqu'au palier de l'étage (%.2f m)" % moi.global_position.y)
 	jeu._niveler()
-	verif(moi.get_meta("niveau", 0) == 1 and lit.visible, "là-haut, ce sont les lampes de l'étage qui l'éclairent")
+	var la_haut_allumees := 0
+	for l in m.lampes:
+		if l.lumiere.visible and l.niveau == 1:
+			la_haut_allumees += 1
+	verif(la_haut_allumees >= 5 and lit.visible and jeu._mailles() < 600, "là-haut, les lampes de l'étage sont allumées, ses meubles dessinés ; %d maillages à l'écran en tout (dans un navigateur, passé le millier, plus rien ne se dessine)" % jeu._mailles())
 	arrive = await _avancer(moi, -1.0, monte.bas.x)
 	verif(arrive and absf(moi.global_position.y) < 0.1, "et les redescend (%.2f m)" % moi.global_position.y)
 	moi.global_position = descend.haut + Vector3(-0.5, 0.05, 0.0)

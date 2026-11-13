@@ -82,6 +82,19 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   const bonus = await attendre(e => e.etat === 'partie' && e.meubles >= 40, 30000);
   verif(bonus && bonus.bonus.includes('cave') && bonus.bonus.includes('garage') && bonus.prime >= 3000 && bonus.quota > 0,
     `« ?bonus=cave,garage » au bout de l'adresse : la maison a sa cave et son garage, ${bonus && bonus.prime} € de trésors en plus du quota`);
+  // une grande maison (285 objets) : passé le millier de maillages à l'écran, un navigateur ne dessine plus rien de la scène
+  console.log('5. Une grande maison');
+  await p.goto(BASE + '?graine=100000');
+  await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);
+  await cliquer('sans_compte'); await cliquer('seul');
+  const grande = await attendre(e => e.etat === 'partie' && e.meubles >= 40, 30000);
+  await p.waitForTimeout(3000);
+  const image = await p.screenshot();
+  const clarte = await p.evaluate(async octets => { const b = await createImageBitmap(new Blob([new Uint8Array(octets)], { type: 'image/png' })); const c = new OffscreenCanvas(64, 36), x = c.getContext('2d');
+    x.drawImage(b, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return s / (d.length / 4) / 3; }, [...image]);
+  const apres = await etat();
+  verif(grande && grande.meubles >= 250 && apres.mailles > 100 && apres.mailles < 700 && clarte > 20,
+    `${grande && grande.meubles} objets, ${apres && apres.mailles} maillages à l'écran, et l'image n'est pas noire (clarté ${clarte.toFixed(0)} sur 255)`);
   verif(!erreurs.length, 'aucune erreur dans la page' + (erreurs.length ? ' ; ' + erreurs.slice(0, 3).join(' | ') : ''));
 
   console.log(`\n${ok ? 'Tout passe' : 'ÉCHEC'} : ${n} vérifications`);

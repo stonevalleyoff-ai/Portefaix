@@ -6,6 +6,7 @@ extends RigidBody3D
 # Ce qui est accroché à un mur (un tableau, un miroir) y tient tant qu'on ne l'a pas pris.
 
 const R = preload("res://scripts/regles.gd")
+const Boites = preload("res://scripts/boites.gd")
 
 signal choc(objet, force)
 signal traine(objet)
@@ -57,7 +58,12 @@ func preparer(p, i: int, t: String) -> void:
 	b.size = taille
 	forme.shape = b
 	add_child(forme)
+	# un seul maillage pour tout le meuble (ce qui luit, une flamme, un écran, a le sien)
+	var fondu := Boites.new()
 	for piece in _pieces(d.couleur):
+		if piece.size() <= 7:
+			fondu.ajouter(taille * Vector3(piece[0], piece[1], piece[2]), taille * Vector3(piece[3], piece[4], piece[5]), piece[6])
+			continue
 		var mesh := MeshInstance3D.new()
 		var m := BoxMesh.new()
 		m.size = taille * Vector3(piece[3], piece[4], piece[5])
@@ -72,6 +78,8 @@ func preparer(p, i: int, t: String) -> void:
 			mat.emission_energy_multiplier = piece[7]
 		mesh.material_override = mat
 		add_child(mesh)
+	if not fondu.vide():
+		add_child(fondu.noeud())
 	if not principal.serveur:
 		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 		freeze = true

@@ -9,6 +9,7 @@ extends Node3D
 # Une graine négative donne la maison d'essai, toujours la même : celle que jouent les essais sans écran.
 
 const R = preload("res://scripts/regles.gd")
+const Boites = preload("res://scripts/boites.gd")
 
 const PLAN_ESSAI := [
 	"###########################",
@@ -77,6 +78,8 @@ var fixes: Array = []             # la place au sol de ce qui tient à la maison
 var fixes_n: Array = []           # et le niveau de chacun
 var _vu_n := 0                     # d'où le joueur regarde : son niveau, et s'il est près de la cage
 var _vu_pres := false
+var _pans := {}                    # les boîtes du décor, à fondre : par niveau et par carré de six mètres
+var _niveau_bati := 0
 var _couche := 1                  # la couche de ce qu'on bâtit : les lampes d'un niveau n'éclairent que lui
 var _mats := {}
 
@@ -118,6 +121,7 @@ func construire(graine: int) -> void:
 		_grille(n)
 	grille = grilles[0]
 	_tanier()
+	_fondre()
 
 
 # --- l'invention d'un plan ---
@@ -429,9 +433,10 @@ func niveau_de(y: float) -> int:
 	return clampi(int(floor((y + 0.8) / PAS)), niveaux.min(), niveaux.max())
 
 
-# la couche de ce qu'on voit à ce niveau : ses lampes n'éclairent qu'elle
-func couche(n: int) -> int:
-	return 1 if n == 0 else (2 if n > 0 else 4)
+# la couche de ce qu'on voit à ce niveau. Une seule pour tous : séparer les niveaux par couches, chacune avec ses lampes, laissait l'écran
+# noir sous Firefox (Windows). On n'en a plus besoin : seules les lampes du niveau où l'on est sont allumées (regarder_de).
+func couche(_n: int) -> int:
+	return 1
 
 
 func centre(c: Vector2i, n: int = 0) -> Vector3:
@@ -615,15 +620,35 @@ func mat(c: Color, lueur: float = 0.0) -> StandardMaterial3D:
 	return _mats[cle]
 
 
+func _teinte_qui_luit(lueur: float) -> StandardMaterial3D:
+	var cle := "teinte/%s" % lueur
+	if not _mats.has(cle):
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.vertex_color_is_srgb = true
+		m.roughness = 0.9
+		m.emission_enabled = true
+		m.emission = Color(0.75, 0.05, 0.04)
+		m.emission_energy_multiplier = lueur
+		_mats[cle] = m
+	return _mats[cle]
+
+
 func _boite(parent: Node3D, c: Vector3, t: Vector3, m: Material, solide: bool = true) -> void:
-	var mesh := MeshInstance3D.new()
-	var b := BoxMesh.new()
-	b.size = t
-	mesh.mesh = b
-	mesh.material_override = m
-	mesh.position = c
-	mesh.layers = _couche
-	parent.add_child(mesh)
+	if parent == _decor and m is StandardMaterial3D and not m.emission_enabled:
+		# une boîte du décor : on ne la dessine pas seule, on la fondra avec ses voisines (_fondre)
+		var cle := Vector3i(int(floor(c.x / 6.0)), int(round(c.y / PAS)), int(floor(c.z / 6.0)))
+		if not _pans.has(cle):
+			_pans[cle] = Boites.new()
+		_pans[cle].ajouter(c, t, m.albedo_color)
+	else:
+		var mesh := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = t
+		mesh.mesh = b
+		mesh.material_override = m
+		mesh.position = c
+		parent.add_child(mesh)
 	if solide and parent is CollisionObject3D:
 		var forme := CollisionShape3D.new()
 		var s := BoxShape3D.new()
@@ -631,6 +656,16 @@ func _boite(parent: Node3D, c: Vector3, t: Vector3, m: Material, solide: bool = 
 		forme.shape = s
 		forme.position = c
 		parent.add_child(forme)
+
+
+# le décor, fondu : un maillage par carré de six mètres et par niveau (une lampe n'éclaire que ce qui est près d'elle, et chaque
+# maillage n'en compte que peu), au lieu d'un par mur
+func _fondre() -> void:
+	for cle in _pans:
+		var mesh: MeshInstance3D = _pans[cle].noeud()
+		mesh.name = "Pan_%d_%d_%d" % [cle.x, cle.y, cle.z]
+		add_child(mesh)
+	_pans.clear()
 
 
 # un meuble fixe (une baignoire, un plan de travail, un tapis) : des boîtes posées en un point, tournées ; solide ou non
@@ -642,11 +677,27 @@ func ajouter_decor(d: Dictionary) -> void:
 	corps.rotation.y = d.yaw
 	add_child(corps)
 	_couche = couche(niveau_de(d.pos.y))
+	var fondu := Boites.new()        # ce qui ne luit pas : un seul maillage pour tout le meuble
 	for b in d.boites:               # (une boîte : son milieu, sa taille, sa couleur ; et, si elle est tournée ou qu'elle luit, de combien)
-		_boite(corps, b[0], b[1], mat(b[2], b[4] if b.size() > 4 else 0.0), d.get("solide", true))
-		if b.size() > 3 and b[3] != 0.0:
-			for k in (2 if d.get("solide", true) else 1):
-				corps.get_child(corps.get_child_count() - 1 - k).rotation.y = b[3]
+		var tour: float = b[3] if b.size() > 3 else 0.0
+		var lueur: float = b[4] if b.size() > 4 else 0.0
+		if lueur > 0.0 and tour == 0.0:
+			_boite(corps, b[0], b[1], mat(b[2], lueur), d.get("solide", true))
+			continue
+		fondu.ajouter(b[0], b[1], b[2], Basis(Vector3.UP, tour))
+		if d.get("solide", true):
+			var forme := CollisionShape3D.new()
+			var s := BoxShape3D.new()
+			s.size = b[1]
+			forme.shape = s
+			forme.position = b[0]
+			forme.rotation.y = tour
+			corps.add_child(forme)
+	if not fondu.vide():
+		var mesh := fondu.noeud()
+		if d.boites[0].size() > 4 and d.boites[0][4] > 0.0:      # (un tracé qui luit, au sol : toutes ses boîtes luisent pareil)
+			mesh.material_override = _teinte_qui_luit(d.boites[0][4])
+		corps.add_child(mesh)
 
 
 func _sol() -> void:
@@ -836,7 +887,6 @@ func _lampe(p: Vector2, n: int) -> void:
 	l.light_energy = 1.6
 	l.omni_range = 7.5
 	l.omni_attenuation = 1.2
-	l.light_cull_mask = couche(n)
 	add_child(l)
 	var a := MeshInstance3D.new()
 	var s := SphereMesh.new()
