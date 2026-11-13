@@ -975,16 +975,15 @@ func _process(dt: float) -> void:
 
 
 # À chaque niveau ses lampes : ce qui bouge (les meubles, les porteurs, le fantôme) passe sur la couche du niveau où il est, pour n'être
-# éclairé que par elles. Et l'on ne dessine pas les meubles des autres niveaux, sauf près de l'escalier, d'où on les voit.
+# éclairé que par elles. Et l'on n'allume ni ne dessine ce qui est aux autres niveaux, sauf autour de l'escalier quand on en est près.
 func _niveler() -> void:
 	if maison.niveaux.size() < 2:
 		return
-	var mien: int = maison.niveau_de(moi.global_position.y)
-	var pres: bool = Rect2(maison.cage).grow(7.0).has_point(Vector2(moi.global_position.x, moi.global_position.z))
+	maison.regarder_de(moi.global_position)
 	for o in objets.values():
 		var n: int = maison.niveau_de(o.global_position.y)
 		_coucher(o, n)
-		o.visible = n == mien or pres or not o.porteurs.is_empty()
+		o.visible = maison.en_vue(o.global_position, n) or not o.porteurs.is_empty()
 	for j in joueurs.values():
 		_coucher(j, maison.niveau_de(j.global_position.y))
 	_coucher(chose, maison.niveau_de(chose.global_position.y))

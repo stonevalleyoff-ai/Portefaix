@@ -1042,6 +1042,23 @@ func _etages() -> void:
 	moi.global_position = Vector3(3.0, -H + 0.05, m.cage.position.y + 2.0)
 	jeu._niveler()
 	verif(not lit.visible, "d'en bas, loin de l'escalier, on ne dessine plus les meubles de l'étage")
+	# les lampes : jamais plus qu'une vingtaine d'allumées à la fois, où qu'on soit (le moteur n'en dessine qu'une trentaine)
+	var pire := 0
+	var eclaire := true
+	for n in m.niveaux:
+		for x: float in [3.0, m.cage.position.x - 3.0, m.cage.position.x + 1.0, m.cage.end.x - 1.0]:
+			moi.global_position = Vector3(x, m.y_de(n) + 0.05, m.cage.position.y + 2.0)
+			jeu._niveler()
+			var allumees := 0
+			var ici := 0
+			for l in m.lampes:
+				if l.lumiere.visible:
+					allumees += 1
+					if l.niveau == n:
+						ici += 1
+			pire = maxi(pire, allumees)
+			eclaire = eclaire and ici >= 5
+	verif(m.lampes.size() > 32 and pire <= 24 and eclaire, "la maison a %d lampes ; à chaque niveau, près ou loin de l'escalier, pas plus de %d ne sont allumées à la fois, dont toutes celles du niveau" % [m.lampes.size(), pire])
 	# un carton lâché en haut des marches : il les dévale
 	var carton = _trouver("carton")
 	_mettre(carton, monte.haut + Vector3(-1.6, 0.5, 0.0))

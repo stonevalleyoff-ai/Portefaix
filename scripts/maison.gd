@@ -75,6 +75,8 @@ var _antre := Rect2i()            # la pièce de la tanière
 var _antre_n := 0
 var fixes: Array = []             # la place au sol de ce qui tient à la maison (une baignoire, un plan de travail)
 var fixes_n: Array = []           # et le niveau de chacun
+var _vu_n := 0                     # d'où le joueur regarde : son niveau, et s'il est près de la cage
+var _vu_pres := false
 var _couche := 1                  # la couche de ce qu'on bâtit : les lampes d'un niveau n'éclairent que lui
 var _mats := {}
 
@@ -563,10 +565,28 @@ func voit(de: Vector3, vers: Vector3, masque: int = 1) -> bool:
 
 # --- ce que le chat peut faire à la maison ---
 
+# près de la cage d'escalier (à moins de tant de mètres), on voit un peu des autres niveaux : leurs lampes et leurs meubles de là
+const VUE_CAGE := 7.0
+const AUTOUR_CAGE := 9.0
+
+# voit-on ce point, d'où l'on est ? Ce qui est à son niveau, toujours ; d'un autre, seulement autour de la cage, quand on en est près
+func en_vue(p: Vector3, n: int) -> bool:
+	return n == _vu_n or (_vu_pres and Rect2(cage).grow(AUTOUR_CAGE).has_point(Vector2(p.x, p.z)))
+
+
+# le joueur est à ce niveau, à cet endroit : n'allumer que les lampes qu'il peut voir (le moteur n'en dessine qu'une trentaine à la fois,
+# et un téléphone bien moins sans peine ; au-delà, l'écran s'éteint)
+func regarder_de(p: Vector3) -> void:
+	_vu_n = niveau_de(p.y)
+	_vu_pres = cage.size.x > 0 and Rect2(cage).grow(VUE_CAGE).has_point(Vector2(p.x, p.z))
+	for l in lampes:
+		l.lumiere.visible = eclairee and en_vue(l.lumiere.position, l.niveau)
+
+
 func lumieres(oui: bool) -> void:
 	eclairee = oui
 	for l in lampes:
-		l.lumiere.visible = oui
+		l.lumiere.visible = oui and en_vue(l.lumiere.position, l.niveau)
 		l.ampoule.material_override = mat(Color(1.0, 0.85, 0.55), 2.5) if oui else mat(Color(0.12, 0.11, 0.1))
 
 
@@ -827,7 +847,7 @@ func _lampe(p: Vector2, n: int) -> void:
 	a.material_override = mat(Color(1.0, 0.85, 0.55), 2.5)
 	a.layers = couche(n)
 	add_child(a)
-	lampes.append({"lumiere": l, "ampoule": a})
+	lampes.append({"lumiere": l, "ampoule": a, "niveau": n})
 
 
 func _camion() -> void:
