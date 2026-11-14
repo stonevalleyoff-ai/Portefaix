@@ -6,12 +6,16 @@ extends Node
 # Le pseudo : celui qu'on se choisit ici (gardé sur le compte), sinon celui de Stone Valley.
 # On peut aussi créer son compte ici (c'est alors un compte Stone Valley comme un autre), et demander un nouveau mot de passe : le
 # service envoie un e-mail, dont le lien ramène à la page du jeu ; le jeu y lit de quoi confirmer le compte, ou changer le mot de passe.
+# Dans un navigateur, la session est celle du portail et des autres jeux du site (même adresse, même stockage, sous la clé
+# « stonevalley:session ») : connecté au portail, on l'est ici en arrivant, et l'inverse ; se déconnecter déconnecte partout. Un
+# jeton de reprise ne sert qu'une fois : avant de renouveler, on regarde si un autre ne vient pas de le faire.
 
 const SUPABASE := "https://ldazucyrnpewkqdneznc.supabase.co"
 const CLE := "sb_publishable_qUrfgAsAUzc3jd_tiqkY9g_EVkkQRAs"      # la clé publique du projet : faite pour être dans le jeu
 const PSEUDO_MAX := 16
 const SITE := "https://stonevalleyoff-ai.github.io/Portefaix/"      # où ramène le lien d'un e-mail, hors d'un navigateur
 const MDP_MIN := 6
+const COMMUNE := "stonevalley:session"      # dans un navigateur : la session commune au portail et aux jeux
 
 signal change
 
@@ -27,6 +31,7 @@ var a_changer := false            # arrivé par le lien « mot de passe oublié 
 var jeton := ""                   # ce qui prouve qui l'on est, pour ce qui viendra (le jeu en ligne)
 var _reprise := ""
 var _jeton_le := 0                # quand le jeton a été reçu : il ne vaut qu'une heure
+var _email := ""
 
 
 func nom() -> String:
@@ -170,7 +175,27 @@ func changer_mot_de_passe(nouveau: String, encore: String) -> void:
 
 # au lancement : si l'on était connecté la dernière fois, on le reste
 func reprendre() -> void:
-	if occupe or not FileAccess.file_exists(fichier):
+	if occupe:
+		return
+	# (dans un navigateur : la session du portail, si l'on y est connecté ; un jeton encore bon sert tel quel, sans le renouveler)
+	var c := _commune()
+	if not c.is_empty():
+		_debut()
+		var reste := (float(c.get("exp", 0.0)) - Time.get_unix_time_from_system() * 1000.0) / 1000.0
+		var r := {"code": 0, "json": null}
+		if reste > 60.0:
+			var u := await _appel(HTTPClient.METHOD_GET, "/auth/v1/user", null, str(c.jeton))
+			if u.code == 200 and u.json is Dictionary:
+				r = {"code": 200, "json": {"access_token": str(c.jeton), "refresh_token": str(c.get("refresh", "")), "expires_in": reste, "user": u.json}}
+		if r.code != 200 and str(c.get("refresh", "")) != "":
+			r = await _appel(HTTPClient.METHOD_POST, "/auth/v1/token?grant_type=refresh_token", {"refresh_token": str(c.refresh)})
+		if not await _recevoir(r):
+			erreur = ""
+			if r.code >= 400 and not _renouvelee_ailleurs():      # elle ne vaut plus rien, pour personne
+				_ecrire_commune(false)
+		_fin()
+		return
+	if not FileAccess.file_exists(fichier):
 		return
 	var garde = JSON.parse_string(FileAccess.get_file_as_string(fichier))
 	if not (garde is Dictionary) or str(garde.get("reprise", "")) == "":
@@ -195,8 +220,10 @@ func deconnecter() -> void:
 	erreur = ""
 	avis = ""
 	a_changer = false
+	_email = ""
 	if FileAccess.file_exists(fichier):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(fichier))
+	_ecrire_commune(false)
 	change.emit()
 
 
@@ -218,9 +245,16 @@ func nommer(p: String) -> void:
 func fonction(nom_fonction: String, params: Dictionary) -> Dictionary:
 	if not connecte:
 		return {"erreur": "connexion"}
-	if Time.get_ticks_msec() - _jeton_le > 45 * 60 * 1000 and _reprise != "":      # le jeton vieillit : on le renouvelle
+	if Time.get_ticks_msec() - _jeton_le > 45 * 60 * 1000 and _reprise != "" and not _renouvelee_ailleurs():      # le jeton vieillit : on le renouvelle
 		_jeton_le = Time.get_ticks_msec()
-		await _recevoir(await _appel(HTTPClient.METHOD_POST, "/auth/v1/token?grant_type=refresh_token", {"refresh_token": _reprise}))
+		var id_avant := id
+		var pseudo_avant := pseudo
+		if not await _recevoir(await _appel(HTTPClient.METHOD_POST, "/auth/v1/token?grant_type=refresh_token", {"refresh_token": _reprise})):
+			id = id_avant
+			if _renouvelee_ailleurs():       # (un autre l'a renouvelée pendant qu'on demandait)
+				connecte = true
+				pseudo = pseudo_avant
+				erreur = ""
 		if not connecte:
 			change.emit()
 			return {"erreur": "connexion"}
@@ -246,25 +280,72 @@ func _recevoir(r: Dictionary) -> bool:
 	var j = r.json
 	if r.code == 200 and j is Dictionary and str(j.get("access_token", "")) != "" and j.get("user") is Dictionary:
 		jeton = str(j.access_token)
-		_jeton_le = Time.get_ticks_msec()
+		# (un jeton repris au portail a déjà vécu : on compte son âge)
+		_jeton_le = Time.get_ticks_msec() - int(maxf(0.0, 3600.0 - float(j.get("expires_in", 3600))) * 1000.0)
 		_reprise = str(j.get("refresh_token", ""))
 		id = str(j.user.get("id", ""))
+		_email = str(j.user.get("email", ""))
 		pseudo = ""
 		var meta = j.user.get("user_metadata")
 		if meta is Dictionary and meta.get("pseudo") is String:
 			pseudo = propre(meta.pseudo)
 		if pseudo == "":
 			await _pseudo_de_stone_valley()
-		var f := FileAccess.open(fichier, FileAccess.WRITE)
-		if f != null:
-			f.store_string(JSON.stringify({"reprise": _reprise}))
-			f.close()
+		if OS.has_feature("web"):
+			# (dans un navigateur, la session se garde sous la clé commune, et là seulement : sinon une session fermée au portail renaîtrait d'ici)
+			if FileAccess.file_exists(fichier):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(fichier))
+			_ecrire_commune(true, float(j.get("expires_in", 3600)))
+		else:
+			var f := FileAccess.open(fichier, FileAccess.WRITE)
+			if f != null:
+				f.store_string(JSON.stringify({"reprise": _reprise}))
+				f.close()
 		connecte = true
 		erreur = ""
 		return true
 	connecte = false
 	erreur = _dire(r)
 	return false
+
+
+# --- la session commune du site (dans un navigateur seulement) ---
+
+# telle qu'elle est gardée ({} : aucune, ou hors d'un navigateur). Sa forme : { jeton, refresh, exp (millisecondes), uid, email, pseudo }
+func _commune() -> Dictionary:
+	if not OS.has_feature("web"):
+		return {}
+	var t = JavaScriptBridge.eval("(function(){try{return localStorage.getItem('%s')||''}catch(e){return ''}})()" % COMMUNE, true)
+	if not (t is String) or t == "":
+		return {}
+	var c = JSON.parse_string(t)
+	if not (c is Dictionary) or str(c.get("jeton", "")) == "" or str(c.get("uid", "")) == "":
+		return {}
+	return c
+
+
+func _ecrire_commune(dedans: bool, dure: float = 3600.0) -> void:
+	if not OS.has_feature("web"):
+		return
+	if not dedans:
+		JavaScriptBridge.eval("try{localStorage.removeItem('%s')}catch(e){}" % COMMUNE, true)
+		return
+	var texte := JSON.stringify({"jeton": jeton, "refresh": _reprise, "exp": int((Time.get_unix_time_from_system() + dure) * 1000.0), "uid": id, "email": _email, "pseudo": pseudo})
+	JavaScriptBridge.eval("try{localStorage.setItem('%s',%s)}catch(e){}" % [COMMUNE, JSON.stringify(texte)], true)
+
+
+# le portail ou un autre jeu vient-il de renouveler la session commune ? Alors on prend la leur, sans rien demander au service
+func _renouvelee_ailleurs() -> bool:
+	var c := _commune()
+	if c.is_empty() or str(c.get("uid", "")) != id or str(c.get("refresh", "")) in ["", _reprise]:
+		return false
+	var reste := float(c.get("exp", 0.0)) / 1000.0 - Time.get_unix_time_from_system()
+	if reste <= 60.0:
+		return false
+	jeton = str(c.jeton)
+	_reprise = str(c.refresh)
+	_jeton_le = Time.get_ticks_msec() - int(maxf(0.0, 3600.0 - reste) * 1000.0)
+	return true
 
 
 # ce que le service a refusé, en clair

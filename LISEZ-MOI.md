@@ -26,6 +26,7 @@ outils/godot.sh --path .
 ```
 
 - **Dans un navigateur** : on y joue seul, ou en ligne avec un salon ; un navigateur ne peut pas héberger en réseau local. Le micro y est éteint au départ ; la case du menu le rallume, si le navigateur l'accorde.
+- **Connecté au portail, connecté ici** : dans un navigateur (et dans l'application installée), la session est celle du [portail](https://stonevalleyoff-ai.github.io/) et des autres jeux du site, gardée sous une même clé du navigateur (`stonevalley:session`). Qui est connecté au portail arrive ici connecté, sans page de connexion ; se connecter ici connecte au portail ; se déconnecter déconnecte partout sur l'appareil. La version de bureau garde sa propre connexion (`user://compte.json`).
 - **Le compte** : le jeu s'ouvre sur une page de connexion. On s'y connecte avec son **compte Stone Valley** (le même e-mail, le même mot de passe : les comptes du projet Supabase « Vallée de pierre »), ou l'on joue sans compte. Connecté, on se choisit un pseudo, que les autres voient au salon et au-dessus de sa tête ; sans pseudo choisi ici, c'est celui de sa sauvegarde Stone Valley. On reste connecté d'une fois sur l'autre.
   - **Créer un compte** : un pseudo, un e-mail, un mot de passe (six caractères au moins). Le service envoie un e-mail de confirmation ; son lien ramène au jeu, connecté. C'est un compte Stone Valley comme un autre.
   - **Mot de passe oublié ?** : on donne son e-mail, on reçoit un lien ; il ramène au jeu, sur la page « Nouveau mot de passe ».
@@ -114,6 +115,7 @@ Tous les réglages sont dans `scripts/regles.gd`.
 | `outils/essai-en-ligne.js` | l'essai en ligne : trois navigateurs, un salon |
 | `outils/construire.sh`, `outils/pwa.js` | construire l'application web installable, dans `site/` |
 | `outils/essai-pwa.js` | l'essai de l'application : le manifeste, le service worker, jouer sans réseau |
+| `outils/essai-session.js` | l'essai de la session commune : connecté au portail, on l'est dans le jeu en arrivant |
 | `outils/banc.js` | ce qui se vérifie sans Godot |
 | `outils/godot.sh` | lancer Godot 4.3, la version officielle, téléchargée et vérifiée |
 | `.github/workflows/site.yml` | à chaque envoi : les essais, puis la publication sur GitHub Pages |
