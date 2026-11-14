@@ -60,6 +60,7 @@ var doses := {}                   # chez l'hôte : la dose de chaque porteur, de
 var ma_dose := 0.0
 var _t_dose := 0.0
 var _t_geiger := 0.0
+var _sans_liaison := {}           # au salon : depuis quand chaque membre attend d'être relié (son numéro → l'heure, en ms)
 var etages_voulus := false       # pour les essais : la maison d'essai, avec son étage et son sous-sol
 var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces pièces bonus
 var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
@@ -292,6 +293,7 @@ func debrancher() -> void:
 
 
 func _hors_ligne() -> void:
+	_sans_liaison.clear()
 	chat.arreter()
 	salon.quitter()
 	if en_reseau:
@@ -335,12 +337,22 @@ func _dire_salon() -> void:
 		# en ligne : le code à donner aux autres, qui est là, et qui est déjà relié
 		var relies: Array = multiplayer.get_peers()
 		var gens: Array = []
+		var maintenant := Time.get_ticks_msec()
+		var bloque := false                # quelqu'un attend sa liaison depuis trop longtemps : les deux réseaux ne se laissent pas relier
 		for m in salon.membres:
 			var n := int(m.get("numero", 0))
 			var lie: bool = n == salon.numero or relies.has(n) or (not salon.hote() and n != 1)
-			gens.append(str(m.get("pseudo", "Porteur")) + ("" if lie else " (en route…)"))
+			if lie:
+				_sans_liaison.erase(n)
+			elif not _sans_liaison.has(n):
+				_sans_liaison[n] = maintenant
+			var long: bool = not lie and maintenant - int(_sans_liaison[n]) > 25000
+			bloque = bloque or long
+			gens.append(str(m.get("pseudo", "Porteur")) + ("" if lie else (" (la liaison n'aboutit pas)" if long else " (en route…)")))
 		var suite := "Donne ce code aux autres. Lance la nuit quand tout le monde est là." if salon.hote() \
 			else ("L'hôte lance la nuit." if relies.has(1) else "On te relie à l'hôte…")
+		if bloque:
+			suite += "\n\nLa liaison directe entre vos deux appareils n'aboutit pas. C'est en général le réseau de l'un des deux qui la refuse (un téléphone en 4G ou 5G, un réseau d'entreprise ou d'école, un VPN). Essayez depuis une box ordinaire, ou coupez le VPN."
 		ui.salon("C'est le code de ce salon.\n\nDans le salon : %s.\n%s" % [", ".join(gens), suite], salon.hote(), salon.code)
 		return
 	var adresses: Array = []
@@ -1183,6 +1195,11 @@ func _temoigner(dt: float) -> void:
 func _process(dt: float) -> void:
 	if web:
 		_temoigner(dt)
+	if etat == SALON and salon.code != "":       # (au salon, on redit où en sont les liaisons : une qui n'aboutit pas finit par se dire)
+		_t_niveaux -= dt
+		if _t_niveaux <= 0.0:
+			_t_niveaux = 2.0
+			_dire_salon()
 	if etat != PARTIE or moi == null:
 		return
 	var indice := _indice()

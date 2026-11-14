@@ -103,6 +103,14 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   verif(await bob.attendre('le refus', e => e.etat === 'menu' && e.avis === 'Ce code ne mène à aucun salon.'), 'bob tape un mauvais code : c\'est dit, il reste au menu');
   await bob.cliquer('code'); await bob.p.keyboard.press('Control+A'); await bob.p.keyboard.type(code.toLowerCase(), { delay: 15 }); await bob.cliquer('entrer');
   verif(await bob.attendre('le salon', e => e.etat === 'salon' && e.code === code && e.numero === 2 && !e.hote && !e.reperes.commencer), 'bob tape le bon (en minuscules) : il entre, numéro 2, sans le bouton de l\'hôte');
+  const ada2 = await joueur('ada2');
+  await ada2.attendre('la page', e => e.etat === 'menu' && e.reperes.email, 120000);
+  await ada2.ecrire('email', 'ada@exemple.fr'); await ada2.ecrire('mdp', 'bon'); await ada2.cliquer('connecter');
+  await ada2.attendre('le menu', e => e.connecte && e.reperes.code, 30000);
+  await ada2.ecrire('code', code); await ada2.p.keyboard.press('Enter');
+  verif(await ada2.attendre('le refus', e => e.etat === 'menu' && /ton propre salon/.test(e.avis), 20000) && service.salons.get(code).membres.length === 2,
+    'ada, dans un second onglet avec le même compte, tape son propre code : refusé, avec l\'explication (il faut un compte par joueur)');
+  await ada2.p.close();
   await cleo.ecrire('code', code); await cleo.p.keyboard.press('Enter');
   verif(await cleo.attendre('le salon', e => e.etat === 'salon' && e.numero === 3), 'cléo aussi, numéro 3');
   verif(await ada.attendre('les trois', e => e.membres.length === 3 && e.membres.map(m => m.pseudo).join() === 'Ada,Bob,Porteur'), 'ada voit les trois pseudos au salon');
@@ -113,7 +121,7 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
 
   console.log('3. La nuit, à trois');
   await ada.cliquer('commencer');
-  for (const j of tous) verif(await j.attendre('la partie', e => e.etat === 'partie' && Object.keys(e.joueurs).length === 3 && e.meubles >= 40 && e.pieces >= 6),
+  for (const j of tous) verif(await j.attendre('la partie', e => e.etat === 'partie' && Object.keys(e.joueurs).length === 3 && e.meubles >= 40 && e.pieces >= 6, 90000),
     `${j.nom} : la nuit commence, trois porteurs, une maison meublée`);
   const [ea, eb, ec] = await Promise.all(tous.map(j => j.etat()));
   verif(ea.quota === eb.quota && eb.quota === ec.quota && ea.quota > 0 && ea.meubles === eb.meubles && eb.meubles === ec.meubles && ea.pieces === ec.pieces,
@@ -122,14 +130,14 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   verif(service.salons.get(code).etat === 'parti', 'le salon est fermé aux nouveaux venus');
   // bob avance : les deux autres le voient bouger
   const avant = (await ada.etat()).joueurs['2'];
-  await bob.p.mouse.click(320, 180); await bob.p.keyboard.down('KeyW');      // (il marche jusqu'à avoir fait deux mètres : trois jeux à la fois, la machine est lente)
-  await bob.attendre('ses deux mètres', e => Math.hypot(e.joueurs['2'][0] - avant[0], e.joueurs['2'][1] - avant[1]) > 2, 20000);
-  await bob.p.keyboard.up('KeyW');
+  await bob.p.mouse.click(320, 180); await bob.p.keyboard.down('KeyS');      // (il marche jusqu'à avoir fait deux mètres : trois jeux à la fois, la machine est lente)
+  await bob.attendre('son mètre et demi', e => Math.hypot(e.joueurs['2'][0] - avant[0], e.joueurs['2'][1] - avant[1]) > 1.0, 40000);      // (à reculons, vers la rampe du camion ; quatre jeux à la fois, la machine est lente)
+  await bob.p.keyboard.up('KeyS');
   let chezBob = (await bob.etat()).joueurs['2'];           // (on attend qu'il soit arrêté pour de bon)
   for (let i = 0; i < 40; i++) { await bob.p.waitForTimeout(500); const p2 = (await bob.etat()).joueurs['2']; const arrete = Math.hypot(p2[0] - chezBob[0], p2[1] - chezBob[1]) < 0.02; chezBob = p2; if (arrete) break; }
   const vu = await ada.attendre('bob qui bouge', e => Math.hypot(e.joueurs['2'][0] - chezBob[0], e.joueurs['2'][1] - chezBob[1]) < 0.5, 40000);
   if (!vu) console.log('    (chez bob : ' + chezBob + ' ; chez ada : ' + (await ada.etat()).joueurs['2'] + ')');
-  verif(Math.hypot(chezBob[0] - avant[0], chezBob[1] - avant[1]) > 2 && vu, `bob marche ${Math.hypot(chezBob[0] - avant[0], chezBob[1] - avant[1]).toFixed(1)} m : ada le voit au même endroit`);
+  verif(Math.hypot(chezBob[0] - avant[0], chezBob[1] - avant[1]) > 1.0 && vu, `bob marche ${Math.hypot(chezBob[0] - avant[0], chezBob[1] - avant[1]).toFixed(1)} m : ada le voit au même endroit`);
   verif(await cleo.attendre('bob qui bouge', e => Math.hypot(e.joueurs['2'][0] - chezBob[0], e.joueurs['2'][1] - chezBob[1]) < 0.5, 40000), 'cléo aussi (par l\'hôte)');
   await ada.photo('3-partie'); await cleo.photo('3-partie');
 

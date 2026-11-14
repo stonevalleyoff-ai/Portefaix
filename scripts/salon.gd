@@ -76,6 +76,11 @@ func _entrer(fonction: String, params: Dictionary) -> String:
 	if r.has("erreur") or not r.has("code"):
 		change.emit()
 		return dire(str(r.get("erreur", "reseau")))
+	if fonction == "pf_salon_rejoindre" and int(r.numero) == 1:
+		# le service nous reconnaît comme celui qui a ouvert ce salon : c'est le même compte, dans un autre onglet ou sur un autre appareil.
+		# On n'y entre pas : deux hôtes ne se relieraient jamais, et en repartant celui-ci fermerait le salon de l'autre.
+		change.emit()
+		return "C'est ton propre salon : ce compte l'a ouvert ailleurs. Pour jouer à plusieurs, il faut un compte par joueur (« Créer un compte »)."
 	principal.debrancher()                 # (ferme ce qui était ouvert avant)
 	code = str(r.code)
 	numero = int(r.numero)
