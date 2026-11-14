@@ -231,7 +231,7 @@ func _faire_menu() -> void:
 	_micro.add_theme_font_size_override("font_size", 18)
 	_menu.add_child(_micro)
 	_aide = _texte(_menu, "ZQSD : marcher · Maj : courir (bruyant) · Ctrl : s'accroupir · Espace : sauter\n"
-		+ "E ou clic : prendre, poser · clic droit : lancer · F : torche · V : crier · G : lancer un réveil · Échap : libérer la souris", 15, Color(0.6, 0.62, 0.66))
+		+ "E ou clic : prendre, poser · clic droit : lancer · F : torche (le fantôme la voit de loin) · V : crier · G : lancer un réveil · Échap : libérer la souris", 15, Color(0.6, 0.62, 0.66))
 
 
 func _faire_connexion() -> void:

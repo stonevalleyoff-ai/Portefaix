@@ -573,14 +573,31 @@ func _chercher() -> void:
 	var avant := Vector3(-sin(rotation.y), 0.0, -cos(rotation.y))
 	var mieux := -1
 	var pres := 1e9
+	var par_la_torche := false
 	for j in principal.joueurs.values():
 		var d: float = global_position.distance_to(j.global_position)
-		var vers: Vector3 = (j.global_position - global_position) * Vector3(1.0, 0.0, 1.0)
-		if d >= pres or (d > R.CHOSE_PRES and avant.dot(vers.normalized()) < R.CHOSE_CONE):
+		if d >= pres:
 			continue
-		if _voit(j, R.CHOSE_VUE * (R.CHOSE_VUE_ACCROUPI if j.accroupi else 1.0), true):
+		var allumee: bool = j.vivant and j.torche_voulue and j.torche_ok
+		# le faisceau lui tombe dessus : il le sent, même de dos
+		if allumee and d < R.TORCHE_FAISCEAU and j.vise().dot((yeux() - Vector3(0.0, 0.8, 0.0) - j.tete.global_position).normalized()) > R.TORCHE_ANGLE and _voit(j, R.TORCHE_FAISCEAU, true):
 			mieux = j.id
 			pres = d
+			par_la_torche = true
+			continue
+		var vers: Vector3 = (j.global_position - global_position) * Vector3(1.0, 0.0, 1.0)
+		if d > R.CHOSE_PRES and avant.dot(vers.normalized()) < R.CHOSE_CONE:
+			continue
+		# devant lui : à quelques mètres ; de bien plus loin si la torche est allumée (accroupi, on se cache à moitié dans les deux cas)
+		var portee: float = R.CHOSE_VUE * (R.CHOSE_VUE_ACCROUPI if j.accroupi else 1.0)
+		if _voit(j, portee, true):
+			mieux = j.id
+			pres = d
+			par_la_torche = false
+		elif allumee and _voit(j, portee * R.CHOSE_TORCHE, true):
+			mieux = j.id
+			pres = d
+			par_la_torche = true
 	if mieux >= 0:
 		mode = ALERTE
 		proie = mieux
@@ -588,7 +605,7 @@ func _chercher() -> void:
 		_dernier = principal.joueurs[mieux].global_position
 		route = PackedVector3Array()
 		_i = 0
-		principal.reperer(mieux)
+		principal.reperer(mieux, par_la_torche)
 
 
 # --- chez tout le monde : le voir bouger ---

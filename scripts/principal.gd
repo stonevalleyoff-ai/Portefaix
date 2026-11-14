@@ -53,6 +53,7 @@ var prime := 0                    # ce que valent les trésors d'une maison bonu
 var quota := 0
 var charge := 0
 var gagne := false
+var torche_au_depart := true      # (les essais partent torche éteinte : le fantôme la voit de loin)
 var etages_voulus := false       # pour les essais : la maison d'essai, avec son étage et son sous-sol
 var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces pièces bonus
 var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
@@ -517,6 +518,7 @@ func ajouter_joueur(id: int, ou: Vector3, rang: int, pseudo: String = "Porteur")
 	var j := Joueur.new()
 	j.nom = pseudo
 	j.preparer(self, id, ou, rang)
+	j.torche_voulue = torche_au_depart
 	monde.add_child(j)
 	joueurs[id] = j
 	return j
@@ -677,8 +679,8 @@ func tuer(qui: int) -> void:
 
 
 # la chose a vu un porteur : elle crie, et lui le sait
-func reperer(qui: int) -> void:
-	repere.rpc(qui, chose.global_position)
+func reperer(qui: int, par_la_torche: bool = false) -> void:
+	repere.rpc(qui, chose.global_position, par_la_torche)
 
 
 # ce que ce porteur a emporté (chez l'hôte)
@@ -838,10 +840,10 @@ func mort(qui: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func repere(qui: int, ou: Vector3) -> void:
+func repere(qui: int, ou: Vector3, par_la_torche: bool = false) -> void:
 	sons.jouer_a("hurle", ou + Vector3.UP * 2.0, 8.0)
 	if qui == mon_id:
-		ui.annoncer("Il t'a vu ! Cours, ou sors du manoir.", 3.0)
+		ui.annoncer("Ta torche l'a attiré ! Éteins-la (%s) et cours." % ("le bouton Torche" if tactile.actif else "F") if par_la_torche else "Il t'a vu ! Cours, ou sors du manoir.", 3.5)
 
 
 @rpc("authority", "call_local", "reliable")

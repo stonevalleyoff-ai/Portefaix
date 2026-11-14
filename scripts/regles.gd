@@ -74,6 +74,11 @@ const CHOSE_CHASSE := 4.0     # plus vite qu'on ne marche, moins qu'on ne court
 const CHOSE_OUIE := 1.5
 const CHOSE_VUE := 4.5        # il n'y voit presque pas : quelques mètres, et un meuble haut suffit à cacher un porteur
 const CHOSE_VUE_ACCROUPI := 0.5
+# la torche : il n'y voit presque pas, mais une lumière, si. Torche allumée, on est vu de bien plus loin (toujours devant lui, et sans
+# rien entre deux) ; et si le faisceau lui tombe dessus, il se retourne, d'où que ce soit. Éteinte (F), on redevient une ombre.
+const CHOSE_TORCHE := 2.5     # torche allumée, il voit ce porteur d'autant plus loin (11 m au lieu de 4,5)
+const TORCHE_FAISCEAU := 12.0 # jusqu'où le faisceau le dérange, même de dos
+const TORCHE_ANGLE := 0.93    # dans l'axe de la torche : le cosinus du demi-angle (21°)
 const CHOSE_CONE := 0.6       # droit devant lui : le cosinus du demi-angle (53° de chaque côté)…
 const CHOSE_PRES := 1.5       # … et il sent ce qui est tout contre lui, même dans son dos
 const CHOSE_ELAN := 7.0       # il prend sa vitesse peu à peu (m/s²)

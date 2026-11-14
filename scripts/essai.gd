@@ -25,6 +25,7 @@ var _fini := false
 
 func _ready() -> void:
 	jeu = get_parent()
+	jeu.torche_au_depart = false
 	_lancer.call_deferred()
 
 
@@ -532,6 +533,28 @@ func _seul() -> void:
 	second.global_position = Vector3(14.5, 0.05, 7.5)
 	await _attendre(0.5)
 	verif(chose.mode == chose.RODE, "à six mètres devant lui dans le couloir, il ne voit pas le porteur")
+	# la torche : elle se voit de loin, et son faisceau se sent
+	second.torche_voulue = true
+	_tourner(second, Vector3(25.0, 1.6, 7.5))              # (il éclaire ailleurs : le fond du couloir)
+	await _attendre(0.5)
+	verif(chose.mode == chose.ALERTE and chose.proie == 2, "le même, torche allumée, sans même l'éclairer : il le voit (jusqu'à %d m, devant lui)" % int(R.CHOSE_VUE * R.CHOSE_TORCHE))
+	poser.call(couloir, fond)
+	second.accroupi = true
+	await _attendre(0.5)
+	verif(chose.mode == chose.RODE, "accroupi, torche allumée, à six mètres : il ne le voit pas")
+	second.accroupi = false
+	second.global_position = Vector3(2.5, 0.05, 7.5)       # six mètres dans son dos
+	_tourner(second, Vector3(2.5, 1.6, 0.0))
+	await _attendre(0.5)
+	var de_dos: bool = chose.mode == chose.RODE
+	_tourner(second, chose.global_position + Vector3(0.0, 1.4, 0.0))
+	await _attendre(0.5)
+	verif(de_dos and chose.mode == chose.ALERTE and chose.proie == 2, "dans son dos, torche allumée : rien tant qu'il éclaire le mur ; le faisceau sur lui, il se retourne")
+	second.torche_voulue = false
+	poser.call(couloir, fond)
+	await _attendre(0.5)
+	verif(chose.mode == chose.RODE, "torche éteinte, toujours dans son dos : plus rien")
+	second.global_position = Vector3(14.5, 0.05, 7.5)
 	second.global_position = Vector3(6.0, 0.05, 7.5)
 	await _attendre(0.5)
 	verif(chose.mode == chose.RODE, "ni à deux mètres et demi dans son dos")
@@ -741,11 +764,15 @@ func _seul() -> void:
 	verif(m.portes[0].verrou and not m.voit(a, b), "la porte claquée, on ne voit plus, et l'on ne passe plus")
 	await _attendre(0.9)
 	verif(not m.portes[0].verrou and m.voit(a, b), "puis elle se rouvre")
+	moi.torche_voulue = true
+	await _images(2)
+	var allumee: bool = moi.torche.visible
 	jeu.sabotage("torches", 0.5, -1, Vector3.ZERO)
 	await _images(2)
-	verif(not moi.torche.visible, "les torches grillées s'éteignent")
+	verif(allumee and not moi.torche.visible, "les torches grillées s'éteignent")
 	await _attendre(0.8)
 	verif(moi.torche.visible, "puis se rallument")
+	moi.torche_voulue = false
 	var piano = _trouver("piano")
 	sol = piano.global_position.y
 	jeu.sabotage("plume", 1.5, -1, Vector3.ZERO)
