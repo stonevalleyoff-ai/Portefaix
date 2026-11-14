@@ -49,6 +49,8 @@ var _fin_texte: Label
 var _fin_rejouer: Button
 var _aide: Label
 var _trouble: ColorRect
+var _fin_defile: ScrollContainer
+var _b_partir: Button
 var _b_lieu: Button
 var _dose: Label
 var _vert: ColorRect
@@ -373,10 +375,19 @@ func bourse(t: String, dette: bool) -> void:
 
 
 func _faire_fin() -> void:
-	_fin_texte = _texte(_fin, "", 26)
-	_fin_compte = _texte(_fin, "", 16, Color(0.8, 0.8, 0.76))
-	_fin_rejouer = _bouton(_fin, "Une autre maison", func(): rejouer.emit())
-	_bouton(_fin, "Retour au menu", func(): quitter.emit())
+	_fin_texte = _texte(_fin, "", 22)
+	# les boutons d'abord, toujours à l'écran ; la facture dessous, dans un cadre qui défile si elle est longue
+	var boutons := HBoxContainer.new()
+	boutons.alignment = BoxContainer.ALIGNMENT_CENTER
+	boutons.add_theme_constant_override("separation", 12)
+	_fin.add_child(boutons)
+	_fin_rejouer = _bouton(boutons, "Une autre maison", func(): rejouer.emit())
+	_bouton(boutons, "Retour au menu", func(): quitter.emit())
+	_fin_defile = ScrollContainer.new()
+	_fin_defile.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_fin.add_child(_fin_defile)
+	_fin_compte = _texte(_fin_defile, "", 15, Color(0.8, 0.8, 0.76))
+	_fin_compte.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
 # la peur bleue : tout l'écran se dédouble, ondule, bleuit, et se referme sur les bords
@@ -512,6 +523,15 @@ func _faire_partie() -> void:
 	var viseur := _coin(Control.PRESET_CENTER, Vector2(-10, -14), Vector2(20, 28), 20)
 	viseur.text = "+"
 	_indice = _coin(Control.PRESET_CENTER, Vector2(-400, 30), Vector2(800, 60), 18)
+	_b_partir = Button.new()
+	_b_partir.text = "Quitter la partie"
+	_b_partir.add_theme_font_size_override("font_size", 18)
+	_b_partir.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_b_partir.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_b_partir.position += Vector2(-16, 14)
+	_b_partir.visible = false
+	_b_partir.pressed.connect(func(): quitter.emit())
+	_partie.add_child(_b_partir)
 	_mort = _coin(Control.PRESET_CENTER_BOTTOM, Vector2(-400, -120), Vector2(800, 60), 20)
 	_mort.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
 	var etiquette := _coin(Control.PRESET_BOTTOM_LEFT, Vector2(18, -64), Vector2(260, 24), 16)
@@ -581,7 +601,7 @@ func reperes() -> Dictionary:
 	var vers := get_viewport().get_screen_transform()
 	var r := {}
 	var choses := {"email": _email, "mdp": _mdp, "connecter": _connexion_bouton, "sans_compte": _b_sans, "seul": _b_seul, "ouvrir": _ligne_creer, "code": _ligne_code,
-		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu}
+		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu, "partir": _b_partir}
 	for nom in _boutique_boutons:
 		choses[nom] = _boutique_boutons[nom]
 	for nom in _c:
@@ -675,6 +695,7 @@ func salon(t: String, hote: bool, code: String = "") -> void:
 
 func partie() -> void:
 	_trouble.visible = false
+	_b_partir.visible = false
 	_annonce.text = ""
 	_mort.text = ""
 	_vote.visible = false
@@ -684,7 +705,12 @@ func partie() -> void:
 func fin(t: String, hote: bool, compte_: String = "") -> void:
 	_fin_texte.text = t
 	_fin_compte.text = compte_
-	_fin_compte.visible = compte_ != ""
+	_fin_defile.visible = compte_ != ""
+	# la facture prend ce qu'il reste de l'écran, pas plus : au-delà, elle défile
+	var ecran := get_viewport().get_visible_rect().size
+	_fin_compte.custom_minimum_size.x = minf(520.0, ecran.x - 40.0)
+	_fin_defile.custom_minimum_size = Vector2(minf(540.0, ecran.x - 24.0), clampf(ecran.y - 300.0, 90.0, 360.0))
+	_fin_defile.scroll_vertical = 0
 	_fin_rejouer.visible = hote
 	_montrer(_fin)
 
@@ -706,6 +732,11 @@ func annoncer(t: String, duree: float = 4.0) -> void:
 
 func mort(t: String) -> void:
 	_mort.text = t
+
+
+# mort, on peut partir : un bouton, en haut à droite (la partie continue pour les autres)
+func peut_partir(oui: bool) -> void:
+	_b_partir.visible = oui
 
 
 func dire(temps: float, charge: int, quota: int, bruit: float, indice: String) -> void:

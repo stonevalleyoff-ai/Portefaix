@@ -936,12 +936,21 @@ func _argent() -> void:
 	jeu.lancer_leurre()
 	await _attendre(0.1)
 	verif(not b.a("leurre") and jeu.chose.mode == jeu.chose.ENQUETE and jeu.chose._destination.x < 6.0, "le réveil à lancer : il sonne au bout du couloir, le fantôme y court, et il n'en reste plus")
+	# mort pendant que les autres jouent encore : un bouton pour partir
+	var avant_la_mort: bool = not jeu.ui.reperes().has("partir")
+	jeu.ui.peut_partir(true)
+	verif(avant_la_mort and jeu.ui.reperes().has("partir"), "mort, un bouton « Quitter la partie » apparaît en haut de l'écran ; vivant, il n'y est pas")
+	jeu.ui.peut_partir(false)
 	# une mauvaise nuit : la dette, ses intérêts, l'huissier
 	b.argent = 100
 	jeu.charge = 0
 	jeu.tuer(1)
 	await _attendre(0.3)
 	var dette: int = -b.argent
+	var ecran: Vector2 = get_viewport().get_visible_rect().size
+	var bas: float = jeu.ui._fin_rejouer.get_global_rect().end.y
+	verif(jeu.ui._fin_rejouer.is_visible_in_tree() and bas < ecran.y and jeu.ui._fin_defile.get_global_rect().end.y <= ecran.y + 1.0 and jeu.ui._fin_compte.text.count("\n") >= 8,
+		"l'écran de fin : les boutons sont au-dessus de la facture, à l'écran, et la facture (%d lignes) tient dans un cadre qui défile" % (jeu.ui._fin_compte.text.count("\n") + 1))
 	verif(jeu.etat == jeu.FIN and dette > 1500 and jeu.ui._fin_compte.text.contains("Dette") and b.acheter("leurre").contains("crédit"), "une nuit perdue, rien de chargé, un mort : %d € de dette, et la boutique ne fait plus crédit" % dette)
 	b.argent = -1000
 	var dit: Array = b.encaisser(-500)

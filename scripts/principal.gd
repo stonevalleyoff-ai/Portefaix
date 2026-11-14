@@ -912,7 +912,9 @@ func mort(qui: int) -> void:
 	if qui == mon_id:
 		_screamer()
 		ui.trouble(false)
-		ui.mort("Le fantôme t'a pris. Tu hantes la maison : %s pour pousser les petits objets." % ("le bouton Pousser" if tactile.actif else "E"))
+		ui.peut_partir(true)
+		ui.mort("Tu es mort. Tu hantes les lieux : %s pour pousser les petits objets.%s" % ["le bouton Pousser" if tactile.actif else "E",
+			"" if tactile.actif else " Échap libère la souris, pour le bouton « Quitter la partie »."])
 	else:
 		ui.annoncer("%s ne répond plus." % j.nom)
 
