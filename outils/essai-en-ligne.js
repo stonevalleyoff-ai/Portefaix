@@ -113,7 +113,17 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   await ada2.p.close();
   await cleo.ecrire('code', code); await cleo.p.keyboard.press('Enter');
   verif(await cleo.attendre('le salon', e => e.etat === 'salon' && e.numero === 3), 'cléo aussi, numéro 3');
-  verif(await ada.attendre('les trois', e => e.membres.length === 3 && e.membres.map(m => m.pseudo).join() === 'Ada,Bob,Porteur'), 'ada voit les trois pseudos au salon');
+  // l'hôte veut partir trop tôt : cléo vient d'entrer, sa liaison n'est pas faite. Le salon le retient.
+  const tot = await ada.etat();
+  if (tot.relies.length < 2) {
+    await ada.cliquer('commencer');
+    await ada.p.waitForTimeout(1500);
+    const retenu = await ada.etat(), chezCleo = await cleo.etat();
+    verif(retenu.etat === 'salon' && chezCleo.etat === 'salon' && service.salons.get(code).etat === 'ouvert', 'ada veut lancer la nuit avant que cléo soit reliée : le salon la retient, personne n\'est laissé dehors');
+  } else console.log('    (cléo était déjà reliée : le départ trop tôt n\'a pas pu être essayé)');
+  const lesTrois = await ada.attendre('les trois', e => e.membres.length === 3 && e.membres.map(m => m.pseudo).join() === 'Ada,Bob,Porteur');
+  if (!lesTrois) { const e = await ada.etat(); console.log('    (chez ada : ' + JSON.stringify({ etat: e.etat, code: e.code, numero: e.numero, membres: e.membres, relies: e.relies, avis: e.avis, hote: e.hote }) + ' ; au service : ' + JSON.stringify(service.salons.get(code)).slice(0, 300) + ')'); }
+  verif(lesTrois, 'ada voit les trois pseudos au salon');
   verif(await ada.attendre('les liaisons', e => e.relies.length === 2 && e.relies.includes(2) && e.relies.includes(3), 45000), 'les navigateurs de bob et de cléo se relient à celui d\'ada (WebRTC)');
   for (const j of [bob, cleo]) verif(await j.attendre('la liaison', e => e.relies.includes(1), 20000), `${j.nom} : relié à l'hôte`);
   await ada.photo('2-salon'); await bob.photo('2-salon');

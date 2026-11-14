@@ -60,6 +60,7 @@ var doses := {}                   # chez l'hôte : la dose de chaque porteur, de
 var ma_dose := 0.0
 var _t_dose := 0.0
 var _t_geiger := 0.0
+var _avis_salon := ""               # ce que le salon a à dire à l'hôte (on ne part pas sans tout le monde)
 var _sans_liaison := {}           # au salon : depuis quand chaque membre attend d'être relié (son numéro → l'heure, en ms)
 var etages_voulus := false       # pour les essais : la maison d'essai, avec son étage et son sous-sol
 var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces pièces bonus
@@ -294,6 +295,7 @@ func debrancher() -> void:
 
 func _hors_ligne() -> void:
 	_sans_liaison.clear()
+	_avis_salon = ""
 	chat.arreter()
 	salon.quitter()
 	if en_reseau:
@@ -348,9 +350,16 @@ func _dire_salon() -> void:
 				_sans_liaison[n] = maintenant
 			var long: bool = not lie and maintenant - int(_sans_liaison[n]) > 25000
 			bloque = bloque or long
-			gens.append(str(m.get("pseudo", "Porteur")) + ("" if lie else (" (la liaison n'aboutit pas)" if long else " (en route…)")))
-		var suite := "Donne ce code aux autres. Lance la nuit quand tout le monde est là." if salon.hote() \
-			else ("L'hôte lance la nuit." if relies.has(1) else "On te relie à l'hôte…")
+			var ou_en_est := " (en route…)" if not salon.demandes.has(n) else " (liaison en cours…)"
+			gens.append(str(m.get("pseudo", "Porteur")) + ("" if lie else (" (la liaison n'aboutit pas)" if long else ou_en_est)))
+		var suite := "Donne ce code aux autres. Lance la nuit quand tout le monde est là : chaque nom doit s'afficher sans rien entre parenthèses." if salon.hote() \
+			else ("Tu es relié. L'hôte lance la nuit." if relies.has(1) else ("L'hôte a répondu : la liaison se fait…" if salon.repondu else "On te relie à l'hôte… (il doit garder le jeu ouvert à l'écran)"))
+		if _avis_salon != "":
+			suite += "\n\n" + _avis_salon
+		# invité : la nuit est partie sans moi
+		if not salon.hote() and salon.parti and not relies.has(1):
+			retour_menu("La nuit a commencé sans toi : la liaison avec l'hôte n'était pas encore faite. Qu'il rouvre un salon, et attende que ton nom s'affiche sans « en route… » avant de lancer.")
+			return
 		if bloque:
 			suite += "\n\nLa liaison directe entre vos deux appareils n'aboutit pas. C'est en général le réseau de l'un des deux qui la refuse (un téléphone en 4G ou 5G, un réseau d'entreprise ou d'école, un VPN). Essayez depuis une box ordinaire, ou coupez le VPN."
 		ui.salon("C'est le code de ce salon.\n\nDans le salon : %s.\n%s" % [", ".join(gens), suite], salon.hote(), salon.code)
@@ -375,6 +384,17 @@ func lancer() -> void:
 		ids.append(id)
 	ids.sort()
 	noms[1] = compte.nom()
+	if salon.code != "" and etat == SALON:       # en ligne : on ne part pas sans ceux qui sont en train d'arriver
+		var attendus: Array = []
+		for m in salon.membres:
+			var n := int(m.get("numero", 0))
+			if n != 1 and not ids.has(n) and Time.get_ticks_msec() - int(_sans_liaison.get(n, Time.get_ticks_msec())) < 25000:
+				attendus.append(str(m.get("pseudo", "Porteur")))
+		if not attendus.is_empty():
+			_avis_salon = "Pas encore : %s n'est pas relié. Encore quelques secondes (garde le jeu à l'écran)." % " et ".join(attendus)
+			_dire_salon()
+			return
+	_avis_salon = ""
 	if salon.code != "":             # en ligne, les pseudos sont ceux du salon, et plus personne n'entre
 		for id in ids:
 			noms[id] = salon.pseudo_de(id)

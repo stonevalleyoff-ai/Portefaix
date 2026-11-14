@@ -22,6 +22,9 @@ var _apres := 0                   # le dernier message de mise en relation lu
 var _file: Array = []             # les messages à envoyer, dans l'ordre
 var _envoie := false
 var _sonde := false
+var parti := false                # l'hôte a lancé la nuit (ce que dit le salon)
+var repondu := false              # invité : l'hôte a répondu à ma demande de liaison
+var demandes := {}                # hôte : les membres dont la demande de liaison m'est arrivée (leur numéro)
 var _t := 0.0
 
 const ERREURS := {
@@ -133,6 +136,10 @@ func _recu(de: int, d) -> void:
 	if not (d is Dictionary):
 		return
 	var type := str(d.get("type", ""))
+	if type == "answer":
+		repondu = true
+	elif type == "offer":
+		demandes[de] = true
 	var l: WebRTCPeerConnection = _pairs.get(de)
 	if l == null:
 		if not hote() or type != "offer":       # seul l'hôte ouvre une liaison à la demande, et seulement sur une offre
@@ -165,6 +172,9 @@ func fermer() -> void:
 	_pairs.clear()
 	_file.clear()
 	_rtc = null
+	parti = false
+	repondu = false
+	demandes.clear()
 	var avait := code != ""
 	code = ""
 	numero = 0
@@ -191,6 +201,7 @@ func _process(dt: float) -> void:
 		if str(r.erreur) == "dehors":        # l'hôte est parti : le salon n'est plus
 			principal.retour_menu(dire("dehors"))
 		return
+	parti = str(r.get("etat", "")) == "parti"
 	if r.get("membres") is Array:
 		membres = r.membres
 	if r.get("signaux") is Array:
