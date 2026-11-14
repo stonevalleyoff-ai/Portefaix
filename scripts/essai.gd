@@ -186,6 +186,47 @@ func _maisons() -> void:
 	verif(rangees and portes_libres, "tout est posé sur du sol, dans la maison, et rien ne barre une porte")
 	verif(antres, "dans chacune, le fantôme se réveille à un endroit dégagé de sa pièce, pas dans un meuble")
 	_bonus(Maison, Amenagement)
+	_caches(Maison, Amenagement)
+
+
+# les objets précieux cachés : dans chaque lieu, plusieurs, à des endroits qui tiennent
+func _caches(Maison, Amenagement) -> void:
+	var bien := true
+	var moins := 99
+	var hauts := 0
+	var coins := 0
+	var valeur := 0
+	for lieu in ["manoir", "bunker"]:
+		for graine in range(1, 7):
+			var m = Maison.new()
+			m.lieu = lieu
+			m.construire(graine)
+			var h := RandomNumberGenerator.new()
+			h.seed = graine + 1
+			var a = Amenagement.new()
+			a.amenager(m, h)
+			var n := 0
+			var pieces := {}
+			var niveaux := {}
+			for o in a.objets:
+				if not o.get("cache", false):
+					continue
+				n += 1
+				valeur += R.CATALOGUE[o.type].valeur
+				var niv: int = m.niveau_de(o.pos.y)
+				niveaux[niv] = true
+				var hauteur: float = o.pos.y - m.y_de(niv)
+				hauts += 1 if hauteur > 1.5 else 0
+				coins += 1 if hauteur < 0.5 else 0
+				bien = bien and o.bonus and m.lettre(int(o.pos.x), int(o.pos.z), niv) == "." and R.PRECIEUX[lieu].has(o.type)
+				for p in m.pieces:
+					if p.niveau == niv and Rect2(p.rect).has_point(Vector2(o.pos.x, o.pos.z)):
+						bien = bien and not pieces.has(p.rect) and not p.type in ["couloir", "entree", "palier"]
+						pieces[p.rect] = true
+			bien = bien and n == R.CACHES[lieu] and niveaux.size() >= mini(m.niveaux.size(), 3)
+			moins = mini(moins, n)
+			m.free()
+	verif(bien and moins >= 6 and hauts >= 10 and coins >= 10, "dans chaque manoir et chaque bunker, %d objets précieux au moins sont cachés, un par pièce au plus, à tous les niveaux : sur un meuble haut (%d) ou dans un coin (%d) ; %d € en moyenne" % [moins, hauts, coins, valeur / 12])
 
 
 # les maisons bonus : une sur quatre, avec ses pièces loufoques et ses trésors
@@ -805,6 +846,24 @@ func _seul() -> void:
 	await _attendre(0.2)
 	verif(jeu.etat == jeu.FIN and not jeu.gagne, "plus un porteur en vie : c'est perdu")
 
+	# un objet précieux caché : le premier qui le prend l'a trouvé
+	jeu.lancer()
+	await _attendre(0.5)
+	jeu.repit = 1e9
+	var cachette = null
+	for o in jeu.objets.values():
+		if o.cache:
+			cachette = o
+	var debut: String = jeu.ui._annonce.text
+	_pilote(jeu.moi)
+	jeu.moi.global_position = Vector3(cachette.global_position.x, jeu.maison.sol(cachette.global_position) + 0.05, cachette.global_position.z + 0.8)
+	await _attendre(0.3)
+	var pose: bool = cachette.valeur == cachette.valeur_neuve and cachette.global_position.y > jeu.maison.sol(cachette.global_position) - 0.05
+	jeu.prendre(1, cachette.id)
+	await _attendre(0.2)
+	verif(jeu.caches >= 4 and jeu.caches <= R.CACHES["manoir"] and debut.contains("objets précieux sont cachés") and pose and cachette.trouve and cachette.porteurs == [1] and jeu.ui._annonce.text.contains("a trouvé") and jeu.prime >= cachette.valeur,
+		"la nuit s'ouvre en disant que %d objets précieux sont cachés ; le porteur en trouve un (%s, %d €), et tout le monde le sait" % [jeu.caches, cachette.nom, cachette.valeur])
+	jeu.lacher(1, cachette.id, false)
 	print("12. La maison bonus")
 	var ordinaire: int = jeu.total
 	jeu.bonus_voulu = ["cave", "garage"]

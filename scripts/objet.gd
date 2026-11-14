@@ -19,6 +19,8 @@ var valeur_neuve := 0
 var valeur := 0
 var fragile := 0.0
 var bonus := false                # un trésor de pièce bonus : il ne compte pas dans le quota
+var cache := false                # un objet précieux caché : le premier qui le prend l'a trouvé
+var trouve := false
 var maudit := false               # le prendre réveille ce qui dort
 var eveille := false
 var accroche := false             # tient encore à son mur
@@ -104,6 +106,25 @@ func _pieces(c: Color) -> Array:
 	var or_ := Color(0.95, 0.75, 0.2)
 	var chrome := Color(0.7, 0.72, 0.75)
 	match type:
+		# --- les objets précieux cachés ---
+		"montre_or":
+			return [[0, 0, 0, 0.5, 1, 0.5, c], [0, 0.3, 0, 0.36, 0.5, 0.36, Color(0.95, 0.95, 0.9)], [0, -0.2, 0.4, 0.26, 0.5, 0.36, sombre], [0, -0.2, -0.4, 0.26, 0.5, 0.36, sombre]]
+		"collier":
+			return [[0, 0, 0.42, 1, 1, 0.16, c], [0, 0, -0.42, 1, 1, 0.16, c], [0.42, 0, 0, 0.16, 1, 1, c], [-0.42, 0, 0, 0.16, 1, 1, c], [0, 0.2, 0.46, 0.2, 1.2, 0.2, Color(0.9, 0.7, 0.2)]]
+		"liasse":
+			return [[0, 0, 0, 1, 1, 1, c], [0, 0, 0, 0.2, 1.04, 1.04, Color(0.9, 0.88, 0.75)], [0.3, 0.5, 0, 0.3, 0.04, 0.5, clair]]
+		"statuette_jade":
+			return [[0, -0.42, 0, 1, 0.16, 1, sombre], [0, -0.1, 0, 0.7, 0.5, 0.7, c], [0, 0.3, 0, 0.5, 0.3, 0.6, c], [0, 0.46, 0.1, 0.3, 0.1, 0.3, clair]]
+		"oeuf_precieux":
+			return [[0, -0.42, 0, 0.7, 0.16, 0.7, or_], [0, 0.04, 0, 1, 0.6, 1, c], [0, 0.4, 0, 0.6, 0.2, 0.6, c], [0, 0.04, 0, 1.04, 0.1, 1.04, or_], [0, 0.5, 0, 0.2, 0.08, 0.2, or_]]
+		"diamant":
+			return [[0, 0.15, 0, 1, 0.5, 1, c], [0, -0.25, 0, 0.5, 0.5, 0.5, clair], [0, 0.42, 0, 0.6, 0.16, 0.6, Color(1, 1, 1)]]
+		"bourse_or":
+			return [[0, -0.1, 0, 1, 0.8, 1, c], [0, 0.38, 0, 0.5, 0.24, 0.5, sombre], [0.2, 0.46, 0.2, 0.3, 0.1, 0.3, or_], [-0.3, -0.45, 0.4, 0.3, 0.1, 0.3, or_]]
+		"plans_secrets":
+			return [[0, 0, 0, 1, 1, 1, c], [0, 0.5, 0, 0.8, 0.1, 0.7, Color(0.3, 0.45, 0.75)], [0.3, 0.52, -0.3, 0.3, 0.1, 0.2, Color(0.8, 0.1, 0.1)]]
+		"medailles":
+			return [[0, 0, 0, 1, 1, 1, c], [-0.25, 0.5, 0, 0.2, 0.2, 0.4, or_], [0.05, 0.5, 0, 0.2, 0.2, 0.4, chrome], [0.33, 0.5, 0, 0.2, 0.2, 0.4, Color(0.7, 0.45, 0.2)]]
 		# --- le bunker ---
 		"lit_camp":
 			return [[0, 0.1, 0, 1, 0.24, 1, c], [0, 0.3, -0.4, 0.8, 0.2, 0.16, clair], [0, 0.24, 0.1, 0.96, 0.08, 0.6, sombre]] + pieds

@@ -50,6 +50,7 @@ var objets := {}
 var hasard := RandomNumberGenerator.new()
 var temps := 0.0
 var total := 0
+var caches := 0                   # combien d'objets précieux sont cachés dans ce lieu
 var prime := 0                    # ce que valent les trésors d'une maison bonus (hors quota)
 var quota := 0
 var charge := 0
@@ -522,6 +523,8 @@ func commencer(graine: int, ids: Array, pseudos: Array, ou_donc: String = "manoi
 	else:
 		var noms: Array = maison.bonus.map(func(b): return maison.NOMS[b])
 		ui.annoncer("MANOIR BONUS ! Ici : %s. Une fortune, en plus du quota.\nChargez pour %d € avant 6 h, puis klaxonnez." % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, quota], 10.0)
+	if caches > 0:                           # (et ce qu'on ne voit pas en entrant)
+		ui._annonce.text += "\n%d objets précieux sont cachés ici : cherchez en hauteur, et dans les coins." % caches
 	if not tactile.actif:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -552,6 +555,7 @@ func _meubler(graine: int) -> void:
 	maison.encombrer(a.lourds, a.fixes, a.lourds_n, a.fixes_n)
 	total = 0
 	prime = 0
+	caches = 0
 	for d in a.objets:
 		var o := Objet.new()
 		o.preparer(self, objets.size(), d.type)
@@ -567,6 +571,8 @@ func _meubler(graine: int) -> void:
 			o.traine.connect(_sur_traine)
 		objets[o.id] = o
 		o.bonus = d.get("bonus", false)
+		o.cache = d.get("cache", false)
+		caches += 1 if o.cache else 0
 		if o.bonus:                      # la prime ne compte pas dans le quota : c'est en plus
 			prime += o.valeur
 		else:                            # (à l'étage, au sous-sol, au fond du bunker : cela pèse moins dans le quota)
@@ -652,6 +658,10 @@ func prendre(qui: int, ido: int) -> void:
 		_dire_a(qui, "Tes bras repoussent encore.")
 		return
 	objet_info.rpc(ido, o.valeur, o.prises + o.accroches(j, libres))
+	if o.cache and not o.trouve:     # un objet précieux caché : le premier qui le prend l'a trouvé, et tout le monde le sait
+		o.trouve = true
+		son_a.rpc("vote", o.global_position, 0.0)
+		annonce.rpc("%s a trouvé %s, caché là : %d € !" % [j.nom, o.nom, o.valeur])
 	if o.maudit and not o.eveille:   # on ne touche pas au grimoire : dans la maison, ça s'entend de partout
 		o.eveille = true
 		for c in choses:
@@ -1194,7 +1204,7 @@ func _temoigner(dt: float) -> void:
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
 		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
-		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "lieu": maison.lieu if maison != null else lieu, "creatures": choses.size(), "dose": snappedf(ma_dose, 0.01), "argent": bourse.argent, "achats": bourse.objets, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
+		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "caches": caches, "lieu": maison.lieu if maison != null else lieu, "creatures": choses.size(), "dose": snappedf(ma_dose, 0.01), "argent": bourse.argent, "achats": bourse.objets, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	if maison != null:
 		t["cage"] = [maison.cage.position.x, maison.cage.position.y, maison.cage.size.x, maison.cage.size.y]

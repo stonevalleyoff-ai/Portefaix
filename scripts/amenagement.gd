@@ -29,6 +29,9 @@ var lourds_n: Array = []         # le niveau de chacun des lourds
 var fixes_n: Array = []
 var _n := 0                       # le niveau de la pièce qu'on meuble
 var _y0 := 0.0                    # et la hauteur de son plancher
+var _cachettes: Array = []        # où l'on peut cacher quelque chose : [le point, le niveau, la pièce, en hauteur ?]
+var _piece := 0
+var _passage := false             # la pièce qu'on meuble est un passage (un couloir, une entrée) : on n'y cache rien
 var _prime := false              # on meuble une pièce bonus : ce qu'on y pose est de la prime
 
 
@@ -36,6 +39,8 @@ func amenager(maison, hasard: RandomNumberGenerator) -> void:
 	m = maison
 	h = hasard
 	for p in m.pieces:
+		_piece += 1
+		_passage = p.type in ["couloir", "entree", "palier", "passerelle"]
 		_r = Rect2(p.rect)
 		_pris = []
 		_aux_murs = []
@@ -106,6 +111,33 @@ func amenager(maison, hasard: RandomNumberGenerator) -> void:
 				_buanderie()
 			"chaufferie":
 				_chaufferie()
+		# les coins restés libres de cette pièce : de quoi y cacher quelque chose, par terre
+		if not p.type in ["couloir", "entree", "palier", "passerelle"] and not _prime:
+			for coin: Vector2 in [_r.position + Vector2(0.3, 0.3), Vector2(_r.end.x - 0.3, _r.position.y + 0.3), Vector2(_r.position.x + 0.3, _r.end.y - 0.3), _r.end - Vector2(0.3, 0.3)]:
+				if _libre(Rect2(coin - Vector2(0.2, 0.2), Vector2(0.4, 0.4)), 0.0):
+					_cachettes.append([Vector3(coin.x, _y0, coin.y), _n, _piece, false])
+	_cacher()
+
+
+# Les objets précieux, cachés. Deux sortes de cachettes : le dessus d'un meuble haut (une armoire, une bibliothèque, un casier : il faut
+# lever les yeux), et un coin de pièce resté libre, par terre, dans l'ombre. Une cachette par pièce au plus, de tout à chaque niveau.
+func _cacher() -> void:
+	var combien: int = R.CACHES.get(m.lieu, 5)
+	var sortes: Array = _melange(R.PRECIEUX.get(m.lieu, R.PRECIEUX["manoir"]).duplicate())
+	var ou: Array = _melange(_cachettes)
+	var pieces_prises := {}
+	var par_niveau := {}
+	var faites := 0
+	for tour in 2:                           # d'abord une par niveau, puis ce qui reste
+		for c in ou:
+			if faites >= combien or pieces_prises.has(c[2]) or (tour == 0 and par_niveau.has(c[1])):
+				continue
+			var type: String = sortes[faites % sortes.size()]
+			var t := _t(type)
+			objets.append({"type": type, "pos": c[0] + Vector3(0.0, t.y * 0.5 + 0.02, 0.0), "yaw": h.randf() * TAU, "accroche": false, "bonus": true, "cache": true})
+			pieces_prises[c[2]] = true
+			par_niveau[c[1]] = true
+			faites += 1
 
 
 # --- les pièces ---
@@ -688,6 +720,8 @@ func _poser(type: String, c: Vector2, yaw: float, y: float = 0.0) -> Dictionary:
 	var t := _t(type)
 	var e := _emprise(c, t, yaw)
 	objets.append({"type": type, "pos": Vector3(c.x, _y0 + y + t.y * 0.5 + 0.02, c.y), "yaw": yaw, "accroche": false, "bonus": _prime})
+	if y <= 0.0 and t.y >= 1.7 and not _prime and not _passage:      # (le dessus d'un meuble haut : une cachette)
+		_cachettes.append([Vector3(c.x, _y0 + t.y + 0.02, c.y), _n, _piece, true])
 	if y <= 0.0:
 		_pris.append([e, t.y])
 		if R.CATALOGUE[type].masse >= R.OBJET_LEGER:

@@ -180,6 +180,10 @@ static func facture(recette: int, du: int, casse: int, morts: int) -> Dictionary
 
 # l'étage et le sous-sol : ce qu'on y trouve compte pour un tiers dans le quota (il faut le descendre, ou le remonter, par l'escalier)
 const PART_ETAGES := 0.33
+# les objets précieux cachés : combien par lieu, et lesquels
+const CACHES := {"manoir": 6, "bunker": 7}
+const PRECIEUX := {"manoir": ["montre_or", "collier", "liasse", "statuette_jade", "oeuf_precieux", "diamant", "bourse_or"],
+	"bunker": ["plans_secrets", "medailles", "liasse", "montre_or", "diamant", "bourse_or", "lingot"]}
 const CHANCE_BONUS := 0.25
 const BONUS := ["cave", "garage", "tresor", "arcade", "nains", "trone"]
 
@@ -221,6 +225,16 @@ const CATALOGUE := {
 	"frigo": {"nom": "un frigo", "taille": Vector3(0.7, 1.8, 0.68), "masse": 75.0, "valeur": 420, "fragile": 0.4, "couleur": Color(0.88, 0.89, 0.9)},
 	"armoire": {"nom": "une armoire", "taille": Vector3(1.2, 2.0, 0.6), "masse": 80.0, "valeur": 500, "fragile": 0.3, "couleur": Color(0.3, 0.19, 0.1)},
 	"piano": {"nom": "un piano", "taille": Vector3(1.5, 1.2, 0.65), "masse": 120.0, "valeur": 900, "fragile": 0.5, "couleur": Color(0.06, 0.06, 0.07)},
+	# --- les objets précieux, cachés : sur le haut d'une armoire, dans un coin sombre. Petits, légers, très chers ; en plus du quota. ---
+	"montre_or": {"nom": "une montre en or", "taille": Vector3(0.12, 0.05, 0.12), "masse": 0.2, "valeur": 800, "fragile": 0.5, "couleur": Color(0.95, 0.75, 0.2)},
+	"collier": {"nom": "un collier de perles", "taille": Vector3(0.22, 0.05, 0.22), "masse": 0.3, "valeur": 1200, "fragile": 0.3, "couleur": Color(0.95, 0.93, 0.88)},
+	"liasse": {"nom": "une liasse de billets", "taille": Vector3(0.18, 0.08, 0.1), "masse": 0.4, "valeur": 1500, "fragile": 0.0, "couleur": Color(0.45, 0.65, 0.4)},
+	"statuette_jade": {"nom": "une statuette de jade", "taille": Vector3(0.14, 0.3, 0.12), "masse": 1.5, "valeur": 2000, "fragile": 0.8, "couleur": Color(0.3, 0.7, 0.5)},
+	"oeuf_precieux": {"nom": "un œuf d'orfèvre", "taille": Vector3(0.14, 0.22, 0.14), "masse": 0.8, "valeur": 3500, "fragile": 1.0, "couleur": Color(0.3, 0.4, 0.85)},
+	"diamant": {"nom": "un diamant", "taille": Vector3(0.09, 0.08, 0.09), "masse": 0.1, "valeur": 5000, "fragile": 0.0, "couleur": Color(0.85, 0.95, 1.0)},
+	"bourse_or": {"nom": "une bourse de pièces d'or", "taille": Vector3(0.16, 0.14, 0.16), "masse": 1.2, "valeur": 1000, "fragile": 0.0, "couleur": Color(0.45, 0.3, 0.18)},
+	"plans_secrets": {"nom": "des plans secrets", "taille": Vector3(0.32, 0.04, 0.24), "masse": 0.3, "valeur": 1800, "fragile": 0.2, "couleur": Color(0.85, 0.82, 0.7)},
+	"medailles": {"nom": "un écrin de médailles", "taille": Vector3(0.24, 0.06, 0.16), "masse": 0.6, "valeur": 900, "fragile": 0.1, "couleur": Color(0.25, 0.1, 0.12)},
 	# --- le bunker ---
 	"lit_camp": {"nom": "un lit de camp", "taille": Vector3(0.9, 0.5, 1.9), "masse": 22.0, "valeur": 90, "fragile": 0.2, "couleur": Color(0.3, 0.36, 0.26)},
 	"casier": {"nom": "un casier", "taille": Vector3(0.6, 1.8, 0.5), "masse": 35.0, "valeur": 150, "fragile": 0.2, "couleur": Color(0.35, 0.4, 0.42)},
