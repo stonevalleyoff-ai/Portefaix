@@ -211,7 +211,7 @@ func _piece(parent: Node3D, c: Vector3, t: Vector3) -> void:
 func point_de_prise(t: Vector3) -> Vector3:
 	var d: float = 1.0 + maxf(t.x, t.z) * 0.5
 	var p: Vector3 = tete.global_position - tete.global_transform.basis.z * d + Vector3(0.0, -0.25, 0.0)
-	p.y = maxf(p.y, 0.3)
+	p.y = maxf(p.y, global_position.y + 0.3)      # (pas plus bas que ses chevilles : à l'étage, au sous-sol, c'est son plancher qui compte, pas celui de l'entrée)
 	return p
 
 

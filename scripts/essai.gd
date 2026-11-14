@@ -1269,8 +1269,24 @@ func _etages() -> void:
 			pire = maxi(pire, allumees)
 			eclaire = eclaire and ici >= 5
 	verif(m.lampes.size() > 32 and pire <= 24 and eclaire, "la maison a %d lampes ; à chaque niveau, près ou loin de l'escalier, pas plus de %d ne sont allumées à la fois, dont toutes celles du niveau" % [m.lampes.size(), pire])
-	# un carton lâché en haut des marches : il les dévale
+	# porter, ailleurs qu'au rez-de-chaussée : l'objet vient aux mains, pas au plafond ni au plancher
 	var carton = _trouver("carton")
+	var tenus: Array = []
+	for niv: int in [1, -1]:
+		_pilote(moi)
+		moi.global_position = Vector3(6.0, m.y_de(niv) + 0.05, m.cage.position.y + 2.0)
+		moi.yaw = PI * 0.5
+		moi.pitch = 0.0
+		_mettre(carton, moi.global_position + Vector3(-1.2, 0.3, 0.0))
+		await _attendre(0.5)
+		jeu.prendre(1, carton.id)
+		await _attendre(1.0)
+		tenus.append(carton.global_position.y - m.y_de(niv))
+		jeu.lacher(1, carton.id, false)
+		await _attendre(0.3)
+	verif(tenus.size() == 2 and tenus[0] > 0.9 and tenus[0] < 1.7 and tenus[1] > 0.9 and tenus[1] < 1.7,
+		"un carton pris à l'étage vient aux mains (%.2f m au-dessus de son plancher), et au sous-sol aussi (%.2f m) : ni au plafond, ni au sol" % [tenus[0], tenus[1]])
+	# un carton lâché en haut des marches : il les dévale
 	_mettre(carton, monte.haut + Vector3(-1.6, 0.5, 0.0))
 	await _attendre(3.0)
 	verif(carton.global_position.y < H - 0.5 and m.escalier_sous(carton.global_position) != null or carton.global_position.y < 0.5,
