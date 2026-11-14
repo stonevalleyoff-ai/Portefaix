@@ -601,7 +601,7 @@ func reperes() -> Dictionary:
 	var vers := get_viewport().get_screen_transform()
 	var r := {}
 	var choses := {"email": _email, "mdp": _mdp, "connecter": _connexion_bouton, "sans_compte": _b_sans, "seul": _b_seul, "ouvrir": _ligne_creer, "code": _ligne_code,
-		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu, "partir": _b_partir}
+		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu, "partir": _b_partir, "compte": _compte_bouton}
 	for nom in _boutique_boutons:
 		choses[nom] = _boutique_boutons[nom]
 	for nom in _c:

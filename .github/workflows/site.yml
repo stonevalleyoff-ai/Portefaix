@@ -52,6 +52,12 @@ jobs:
         run: |
           npm install --no-save --no-audit --no-fund playwright@1 > /dev/null
           node outils/essai-pwa.js site
+      - name: l'essai de la session commune (connecté au portail, on l'est dans le jeu)
+        continue-on-error: true          # (il ne retient pas la publication)
+        timeout-minutes: 6
+        env:
+          NAVIGATEUR: chrome
+        run: node outils/essai-session.js site
       - name: le site, pour la publication
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
