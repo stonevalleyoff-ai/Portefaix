@@ -139,9 +139,14 @@ const BOUTIQUE := {
 	"lampe": {"nom": "une grosse torche", "prix": 600, "une_fois": false, "dit": "Elle éclaire plus loin et plus large."},
 	"gants": {"nom": "des gants de cuir", "prix": 900, "une_fois": false, "dit": "Tes bras tiennent près d'un mètre de plus avant de s'arracher."},
 	"sangles": {"nom": "des sangles de portage", "prix": 1500, "une_fois": false, "dit": "Tu portes moitié plus lourd."},
+	"combinaison": {"nom": "une combinaison antiradiation", "prix": 1200, "une_fois": false, "dit": "Au bunker, la radioactivité t'atteint deux fois et demie moins vite."},
 	"trousse": {"nom": "une trousse de secours", "prix": 300, "une_fois": true, "dit": "Le premier coup du fantôme ne te blesse pas. Sert une fois."},
 	"leurre": {"nom": "un réveil à lancer", "prix": 250, "une_fois": true, "dit": "Touche G : il sonne là où tu regardes, et le fantôme y court. Sert une fois."},
 }
+# la radioactivité : dans une zone, la dose monte ; dehors, elle retombe lentement. Pleine, on en meurt.
+const DOSE_MORTELLE := 16.0   # secondes au cœur d'une zone, d'une traite
+const DOSE_REPOS := 60.0      # secondes pour qu'une dose pleine retombe
+const COMBINAISON := 0.4      # ce qu'il reste de la dose, en combinaison
 const CHAUSSONS := 0.6        # ce qu'il reste du bruit des pas
 const GANTS := 0.9            # ce que les bras tiennent de plus, en mètres
 const SANGLES := 1.5          # la force de qui en porte
@@ -216,6 +221,21 @@ const CATALOGUE := {
 	"frigo": {"nom": "un frigo", "taille": Vector3(0.7, 1.8, 0.68), "masse": 75.0, "valeur": 420, "fragile": 0.4, "couleur": Color(0.88, 0.89, 0.9)},
 	"armoire": {"nom": "une armoire", "taille": Vector3(1.2, 2.0, 0.6), "masse": 80.0, "valeur": 500, "fragile": 0.3, "couleur": Color(0.3, 0.19, 0.1)},
 	"piano": {"nom": "un piano", "taille": Vector3(1.5, 1.2, 0.65), "masse": 120.0, "valeur": 900, "fragile": 0.5, "couleur": Color(0.06, 0.06, 0.07)},
+	# --- le bunker ---
+	"lit_camp": {"nom": "un lit de camp", "taille": Vector3(0.9, 0.5, 1.9), "masse": 22.0, "valeur": 90, "fragile": 0.2, "couleur": Color(0.3, 0.36, 0.26)},
+	"casier": {"nom": "un casier", "taille": Vector3(0.6, 1.8, 0.5), "masse": 35.0, "valeur": 150, "fragile": 0.2, "couleur": Color(0.35, 0.4, 0.42)},
+	"pupitre": {"nom": "un pupitre de commande", "taille": Vector3(1.2, 1.1, 0.7), "masse": 55.0, "valeur": 900, "fragile": 0.6, "couleur": Color(0.4, 0.44, 0.42)},
+	"radio": {"nom": "un poste radio", "taille": Vector3(0.5, 0.35, 0.3), "masse": 6.0, "valeur": 350, "fragile": 0.7, "couleur": Color(0.25, 0.3, 0.24)},
+	"radar": {"nom": "un écran radar", "taille": Vector3(0.7, 0.7, 0.5), "masse": 14.0, "valeur": 800, "fragile": 0.8, "couleur": Color(0.3, 0.32, 0.3)},
+	"masque_gaz": {"nom": "un masque à gaz", "taille": Vector3(0.25, 0.25, 0.25), "masse": 0.8, "valeur": 120, "fragile": 0.3, "couleur": Color(0.2, 0.22, 0.2)},
+	"conserves": {"nom": "une caisse de conserves", "taille": Vector3(0.4, 0.3, 0.3), "masse": 6.0, "valeur": 60, "fragile": 0.1, "couleur": Color(0.45, 0.36, 0.22)},
+	"caisse_munitions": {"nom": "une caisse de munitions", "taille": Vector3(0.7, 0.35, 0.4), "masse": 20.0, "valeur": 400, "fragile": 0.0, "couleur": Color(0.28, 0.33, 0.2)},
+	"fut": {"nom": "un fût", "taille": Vector3(0.6, 0.9, 0.6), "masse": 40.0, "valeur": 120, "fragile": 0.1, "couleur": Color(0.2, 0.3, 0.45)},
+	"fut_radioactif": {"nom": "un fût de déchets", "taille": Vector3(0.6, 0.9, 0.6), "masse": 45.0, "valeur": 600, "fragile": 0.1, "couleur": Color(0.8, 0.7, 0.1)},
+	"generateur": {"nom": "un groupe électrogène", "taille": Vector3(1.2, 0.9, 0.7), "masse": 110.0, "valeur": 1800, "fragile": 0.4, "couleur": Color(0.6, 0.45, 0.1)},
+	"pharmacie": {"nom": "une armoire à pharmacie", "taille": Vector3(0.5, 0.4, 0.2), "masse": 4.0, "valeur": 300, "fragile": 0.6, "couleur": Color(0.9, 0.9, 0.88)},
+	"barre_uranium": {"nom": "une barre d'uranium", "taille": Vector3(0.16, 0.7, 0.16), "masse": 19.0, "valeur": 2500, "fragile": 0.0, "couleur": Color(0.4, 1.0, 0.35)},
+	"caisse_plomb": {"nom": "une caisse plombée", "taille": Vector3(0.6, 0.5, 0.6), "masse": 80.0, "valeur": 1600, "fragile": 0.0, "couleur": Color(0.34, 0.36, 0.4)},
 	# --- les trésors des pièces bonus ---
 	# la cave au rituel (« maudit » : le prendre fait un bruit que le fantôme entend de partout)
 	"bougie": {"nom": "une bougie noire", "taille": Vector3(0.08, 0.3, 0.08), "masse": 0.3, "valeur": 15, "fragile": 0.5, "couleur": Color(0.08, 0.07, 0.08)},

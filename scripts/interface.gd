@@ -22,6 +22,7 @@ signal page_compte                 # on change de page de compte : ce qui était
 signal salon_creer
 signal salon_rejoindre(code: String)
 signal vers_boutique
+signal lieu_change
 signal achat(nom: String)
 
 var _menu: Control
@@ -48,6 +49,9 @@ var _fin_texte: Label
 var _fin_rejouer: Button
 var _aide: Label
 var _trouble: ColorRect
+var _b_lieu: Button
+var _dose: Label
+var _vert: ColorRect
 var _screamer: Control
 var _screamer_face: Control
 var _screamer_gueule: Control
@@ -187,6 +191,7 @@ func _faire_menu() -> void:
 	_bourse_texte.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ligne_bourse.add_child(_bourse_texte)
 	_b_boutique = _bouton(ligne_bourse, "La boutique", func(): vers_boutique.emit())
+	_b_lieu = _bouton(_menu, "", func(): lieu_change.emit())
 	_b_seul = _bouton(_menu, "Jouer seul", func(): seul.emit())
 	_ligne_bloc = VBoxContainer.new()
 	_ligne_bloc.add_theme_constant_override("separation", 10)
@@ -462,6 +467,20 @@ func _animer_screamer() -> void:
 	_screamer.modulate.a = 1.0 if a < 0.75 else (1.0 - a) / 0.25
 
 
+# où l'on joue : le bouton du menu passe de l'un à l'autre
+func lieu(nom: String) -> void:
+	_b_lieu.text = "Lieu : le bunker (plusieurs créatures, des radiations) — changer" if nom == "bunker" else "Lieu : le manoir hanté — changer"
+
+
+# la dose de radiations : un compteur, et l'écran qui verdit
+func dose(d: float, rayonne: float, au_bunker: bool) -> void:
+	_dose.visible = au_bunker
+	_dose.text = "Dose : %d %%%s" % [int(d * 100.0), "   ☢ zone radioactive" if rayonne > 0.0 else ""]
+	_dose.add_theme_color_override("font_color", Color(0.9, 0.9, 0.86).lerp(Color(0.4, 1.0, 0.3), clampf(d * 1.5 + rayonne * 0.4, 0.0, 1.0)))
+	_vert.visible = d > 0.02 or rayonne > 0.0
+	_vert.color = Color(0.25, 1.0, 0.2, clampf(d * 0.3 + rayonne * 0.06, 0.0, 0.36))
+
+
 func trouble(oui: bool) -> void:
 	_trouble.visible = oui
 
@@ -477,6 +496,14 @@ func _faire_partie() -> void:
 	_trouble.material = voile
 	_trouble.visible = false
 	_partie.add_child(_trouble)
+	_vert = ColorRect.new()
+	_vert.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vert.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vert.visible = false
+	_partie.add_child(_vert)
+	_dose = _coin(Control.PRESET_TOP_LEFT, Vector2(18, 44), Vector2(420, 30), 18)
+	_dose.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_dose.visible = false
 	_heure = _coin(Control.PRESET_CENTER_TOP, Vector2(-100, 12), Vector2(200, 40), 30)
 	_quota = _coin(Control.PRESET_TOP_LEFT, Vector2(18, 12), Vector2(420, 60), 22)
 	_quota.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -554,7 +581,7 @@ func reperes() -> Dictionary:
 	var vers := get_viewport().get_screen_transform()
 	var r := {}
 	var choses := {"email": _email, "mdp": _mdp, "connecter": _connexion_bouton, "sans_compte": _b_sans, "seul": _b_seul, "ouvrir": _ligne_creer, "code": _ligne_code,
-		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique}
+		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu}
 	for nom in _boutique_boutons:
 		choses[nom] = _boutique_boutons[nom]
 	for nom in _c:

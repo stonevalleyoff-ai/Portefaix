@@ -106,6 +106,19 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
     x.drawImage(b, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return s / (d.length / 4) / 3; }, [...floue]);
   verif(clarte2 > 8 && clarte2 < clarte && !Buffer.from(floue).equals(Buffer.from(image)), `la peur bleue : la vue se trouble et s'assombrit sur les bords, sans s'éteindre (clarté ${clarte2.toFixed(0)}, contre ${clarte.toFixed(0)})`);
 
+  // le second lieu : le bunker (plus grand encore : quatre niveaux)
+  await p.goto(BASE + '?lieu=bunker&graine=1');
+  await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);
+  await cliquer('sans_compte'); await cliquer('seul');
+  const bunker = await attendre(e => e.etat === 'partie' && e.meubles >= 40 && e.lieu === 'bunker', 40000);
+  await p.waitForTimeout(3000);
+  const vue = await p.screenshot();
+  const clarte3 = await p.evaluate(async octets => { const b = await createImageBitmap(new Blob([new Uint8Array(octets)], { type: 'image/png' })); const c = new OffscreenCanvas(64, 36), x = c.getContext('2d');
+    x.drawImage(b, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return s / (d.length / 4) / 3; }, [...vue]);
+  const la = await etat();
+  verif(bunker && bunker.creatures === 3 && la.mailles > 100 && la.mailles < 800 && clarte3 > 12,
+    `« ?lieu=bunker » : le bunker, ${bunker && bunker.meubles} objets, ${bunker && bunker.creatures} créatures, ${la && la.mailles} maillages, et l'image n'est pas noire (clarté ${clarte3.toFixed(0)})`);
+
   console.log('6. La boutique');
   await p.goto(BASE);
   await attendre(e => e.etat === 'menu' && e.reperes.sans_compte, 90000);

@@ -76,6 +76,32 @@ func amenager(maison, hasard: RandomNumberGenerator) -> void:
 				_debarras()
 			"palier":
 				_palier()
+			"passerelle":
+				_passerelle()
+			"garde":
+				_garde()
+			"vestiaire":
+				_vestiaire()
+			"reserve":
+				_reserve()
+			"dortoir":
+				_dortoir()
+			"refectoire":
+				_refectoire()
+			"controle":
+				_controle()
+			"infirmerie":
+				_infirmerie()
+			"hall":
+				_hall()
+			"armurerie":
+				_armurerie()
+			"citerne":
+				_citerne()
+			"dechets":
+				_dechets()
+			"reacteur":
+				_reacteur()
 			"buanderie":
 				_buanderie()
 			"chaufferie":
@@ -220,6 +246,11 @@ func _entree() -> void:
 
 
 func _couloir() -> void:
+	if m.lieu == "bunker":                       # au bunker : des couloirs nus, un fût ou une caisse oubliés contre un mur
+		_mur("casier")
+		_ou_il_reste("fut")
+		_ou_il_reste("conserves")
+		return
 	if _n >= 0:                                  # un long tapis rouge, usé, d'un bout à l'autre
 		var long := _r.size.x >= _r.size.y
 		_tapis(_r.get_center(), Vector2(_r.size.x - 1.0, 1.1) if long else Vector2(1.1, _r.size.y - 1.0), Color(0.42, 0.07, 0.09))
@@ -409,6 +440,167 @@ func _socle(c: Vector2, t: Vector3, boites: Array) -> Dictionary:
 # la cage d'escalier : rien (il faut y passer avec un canapé)
 func _palier() -> void:
 	pass
+
+
+# --- le bunker ---
+
+# au bout de la passerelle, sur la plate-forme : ce qu'on y a monté, et oublié
+func _passerelle() -> void:
+	var y := 0.0
+	for k in 2:
+		var c := Vector2(_r.position.x + 1.0 + k * (_r.size.x - 2.0), _r.position.y + 1.0)
+		objets.append({"type": "caisse_munitions" if k == 0 else "radio", "pos": Vector3(c.x, _y0 + y + _t("caisse_munitions").y * 0.5 + 0.03, c.y), "yaw": 0.0, "accroche": false, "bonus": false})
+
+
+func _garde() -> void:
+	var bureau := _mur("bureau")
+	_sur(bureau, "radio")
+	_devant(bureau, "chaise", 0.75)
+	_mur("casier")
+	_mur("casier")
+	_ou_il_reste("masque_gaz")
+	_ou_il_reste("carton")
+
+
+func _vestiaire() -> void:
+	for i in 4:
+		_mur("casier")
+	for i in 3:
+		_ou_il_reste("masque_gaz")
+	_ou_il_reste("chaise")
+	_ou_il_reste("panier")
+
+
+func _reserve() -> void:
+	_mur("bibliotheque")
+	_mur("bibliotheque")
+	for i in 5:
+		_ou_il_reste("conserves")
+	_ou_il_reste("fut")
+	_ou_il_reste("caisse_munitions")
+	_ou_il_reste("carton")
+	_ou_il_reste("bidon")
+
+
+func _dortoir() -> void:
+	for i in 5:
+		var lit := _mur("lit_camp")
+		if not lit.is_empty() and i % 2 == 0:
+			_a_cote(lit, "casier", 1.0)
+	_ou_il_reste("masque_gaz")
+	_ou_il_reste("carton")
+	_ou_il_reste("coussin")
+
+
+func _refectoire() -> void:
+	for k in 2:
+		var table := _milieu("table", 0.0 if _r.size.x >= _r.size.y else PI * 0.5) if k == 0 else _ou_il_reste("table")
+		if table.is_empty():
+			continue
+		for cote: float in [-1.0, 1.0]:
+			_chaise(table.c + _avant(table) * cote * (table.t.z * 0.5 + 0.4), table.yaw + (PI if cote > 0 else 0.0))
+	_mur("frigo")
+	_mur("cuisiniere")
+	_mur("buffet")
+	for i in 3:
+		_ou_il_reste("conserves")
+
+
+func _controle() -> void:
+	var premier := _mur("pupitre")
+	_sur(premier, "radar")
+	_devant(premier, "chaise", 0.8)
+	for i in 2:
+		var p := _mur("pupitre")
+		_devant(p, "chaise", 0.8)
+	var bureau := _mur("bureau")
+	_sur(bureau, "ordinateur")
+	_sur(bureau, "radio", 0.45)
+	_mur("casier")
+	_mural("tableau")
+
+
+func _infirmerie() -> void:
+	_mur("lit_camp")
+	_mur("lit_camp")
+	var commode := _mur("commode")
+	_sur(commode, "pharmacie")
+	_mur("casier")
+	_mural("pharmacie", 1.5)
+	_ou_il_reste("chaise")
+	_ou_il_reste("masque_gaz")
+
+
+# le hall des machines : sous la passerelle, de gros blocs qui tiennent au sol, et ce qu'on peut en emporter
+func _hall() -> void:
+	var acier := Color(0.3, 0.34, 0.33)
+	for k in 2:
+		_decor_au_mur(Vector3(2.2, 2.4, 1.2), [
+			[Vector3(0, 1.0, 0), Vector3(2.2, 2.0, 1.2), acier],
+			[Vector3(-0.6, 2.2, 0), Vector3(0.5, 0.5, 0.5), acier.darkened(0.3)], [Vector3(0.6, 2.9, 0), Vector3(0.3, 1.8, 0.3), acier.darkened(0.4)],
+			[Vector3(0, 1.3, 0.61), Vector3(0.9, 0.5, 0.04), Color(0.9, 0.7, 0.1)], [Vector3(-0.7, 0.6, 0.61), Vector3(0.2, 0.2, 0.04), Color(0.2, 1.0, 0.3), 0.0, 2.0],
+			[Vector3(0.7, 0.6, 0.61), Vector3(0.2, 0.2, 0.04), Color(1.0, 0.2, 0.1), 0.0, 2.0]])
+	_mur("generateur")
+	_mur("generateur")
+	_coin("fut")
+	_coin("fut")
+	_ou_il_reste("caisse_outils")
+	_ou_il_reste("caisse_outils")
+	_ou_il_reste("bidon")
+	_ou_il_reste("carton")
+	_ou_il_reste("pneus")
+
+
+func _armurerie() -> void:
+	for i in 3:
+		_mur("casier")
+	for i in 4:
+		_ou_il_reste("caisse_munitions")
+	_ou_il_reste("masque_gaz")
+	_ou_il_reste("radio")
+
+
+func _citerne() -> void:
+	var cuve := Color(0.26, 0.3, 0.34)
+	for k in 2:
+		_decor_au_mur(Vector3(1.6, 2.2, 1.6), [
+			[Vector3(0, 1.1, 0), Vector3(1.4, 2.2, 1.4), cuve], [Vector3(0, 1.1, 0), Vector3(1.6, 0.12, 1.6), cuve.darkened(0.4)],
+			[Vector3(0, 2.0, 0), Vector3(1.6, 0.12, 1.6), cuve.darkened(0.4)], [Vector3(0, 0.5, 0.75), Vector3(0.2, 0.2, 0.2), Color(0.7, 0.15, 0.1)]])
+	_ou_il_reste("fut")
+	_ou_il_reste("fut")
+	_ou_il_reste("bidon")
+	_ou_il_reste("bidon")
+	_ou_il_reste("caisse_outils")
+
+
+# le dépôt de déchets : des fûts qui fuient, une flaque qui luit. Ce qu'on y prend vaut cher, et se paie en dose.
+func _dechets() -> void:
+	var c := _r.get_center()
+	decors.append({"pos": Vector3(c.x, _y0, c.y), "yaw": 0.0, "solide": false, "boites": [
+		[Vector3(0, 0.008, 0), Vector3(1.8, 0.016, 1.3), Color(0.3, 1.0, 0.2), 0.3, 1.6], [Vector3(0.5, 0.009, 0.5), Vector3(1.0, 0.016, 1.2), Color(0.3, 1.0, 0.2), -0.5, 1.6]]})
+	for i in 6:
+		_ou_il_reste("fut_radioactif")
+	_mur("caisse_plomb")
+	_coin("caisse_plomb")
+	_ou_il_reste("masque_gaz")
+
+
+# le réacteur : son cœur luit au milieu de la salle. Les barres d'uranium valent une fortune.
+func _reacteur() -> void:
+	var c := _r.get_center()
+	var coeur := _socle(c, Vector3(1.6, 1.4, 1.6), [
+		[Vector3(0, 0.35, 0), Vector3(1.6, 0.7, 1.6), Color(0.3, 0.32, 0.34)], [Vector3(0, 1.0, 0), Vector3(1.0, 0.7, 1.0), Color(0.35, 1.0, 0.3), 0.0, 2.2],
+		[Vector3(0, 1.4, 0), Vector3(1.3, 0.1, 1.3), Color(0.2, 0.22, 0.24)]])
+	if coeur.is_empty():
+		_decor_au_mur(Vector3(1.6, 1.4, 1.2), [[Vector3(0, 0.7, 0), Vector3(1.4, 1.4, 1.0), Color(0.35, 1.0, 0.3), 0.0, 2.2]])
+	for i in 4:
+		_ou_il_reste("barre_uranium")
+	var p := _mur("pupitre")
+	_devant(p, "chaise", 0.8)
+	_mur("pupitre")
+	_coin("caisse_plomb")
+	_ou_il_reste("fut_radioactif")
+	_ou_il_reste("fut_radioactif")
 
 
 # au sous-sol : les machines, le linge

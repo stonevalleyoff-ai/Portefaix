@@ -28,7 +28,8 @@ var en_reseau := false
 var mon_id := 1
 var monde: Node3D
 var maison
-var chose
+var chose                         # la créature (la première, s'il y en a plusieurs)
+var choses: Array = []            # toutes : le manoir en a une, le bunker plusieurs
 var chat
 var micro
 var sons
@@ -54,6 +55,11 @@ var quota := 0
 var charge := 0
 var gagne := false
 var torche_au_depart := true      # (les essais partent torche éteinte : le fantôme la voit de loin)
+var lieu := "manoir"              # où l'on joue la prochaine nuit : le manoir, ou le bunker
+var doses := {}                   # chez l'hôte : la dose de chaque porteur, de 0 à 1 (au bunker)
+var ma_dose := 0.0
+var _t_dose := 0.0
+var _t_geiger := 0.0
 var etages_voulus := false       # pour les essais : la maison d'essai, avec son étage et son sous-sol
 var bonus_voulu: Array = []      # pour les essais : la maison d'essai, avec ces pièces bonus
 var graine := -1                # la graine de la maison ; -1, le hasard la choisit ; une autre négative : la maison d'essai
@@ -112,6 +118,15 @@ func _ready() -> void:
 		_sur_compte())
 	ui.vers_connexion.connect(ui.page_connexion)
 	ui.sans_compte.connect(func(): ui.menu(""))
+	ui.lieu_change.connect(func():
+		lieu = "bunker" if lieu == "manoir" else "manoir"
+		ui.lieu(lieu))
+	for a in OS.get_cmdline_args() + OS.get_cmdline_user_args():
+		if a == "--lieu=bunker":
+			lieu = "bunker"
+	if web and str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('lieu') || ''", true)) == "bunker":
+		lieu = "bunker"
+	ui.lieu(lieu)
 	ui.vers_boutique.connect(func(): ui.boutique(bourse))
 	ui.achat.connect(func(nom: String):
 		var refus: String = bourse.acheter(nom)
@@ -356,7 +371,7 @@ func lancer() -> void:
 	for id in ids:
 		pseudos.append(str(noms.get(id, "Porteur")))
 	chat.chaine = "" if hors_ligne else ui.chaine()
-	commencer.rpc(graine if graine != -1 else _au_hasard(), ids, pseudos)
+	commencer.rpc(graine if graine != -1 else _au_hasard(), ids, pseudos, lieu)
 
 
 func retour_menu(avis: String = "") -> void:
@@ -375,6 +390,7 @@ func _vider() -> void:
 	monde = null
 	maison = null
 	chose = null
+	choses = []
 	moi = null
 	joueurs.clear()
 	objets.clear()
@@ -412,7 +428,7 @@ func _au_hasard() -> int:
 
 
 @rpc("authority", "call_local", "reliable")
-func commencer(graine: int, ids: Array, pseudos: Array) -> void:
+func commencer(graine: int, ids: Array, pseudos: Array, ou_donc: String = "manoir") -> void:
 	graine_jouee = graine
 	_vider()
 	mon_id = multiplayer.get_unique_id()
@@ -427,15 +443,23 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	if graine < 0:
 		maison.bonus_voulu = bonus_voulu
 		maison.etages_voulus = etages_voulus
+	elif ou_donc == "bunker":
+		maison.lieu = "bunker"
 	maison.construire(graine)
 	_meubler(graine)
 	for k in ids.size():
 		ajouter_joueur(int(ids[k]), maison.depart(k), k, Compte.propre(str(pseudos[k])) if k < pseudos.size() else "Porteur")
 	moi = joueurs.get(mon_id)
-	chose = Creature.new()
-	chose.name = "Chose"
-	monde.add_child(chose)
-	chose.preparer(self)
+	choses = []
+	for k in maison.tanieres.size():           # une créature par tanière
+		var c := Creature.new()
+		c.name = "Chose" if k == 0 else "Chose%d" % k
+		c.sorte = 1 if maison.lieu == "bunker" else 0
+		c.taniere = maison.tanieres[k]
+		monde.add_child(c)
+		c.preparer(self)
+		choses.append(c)
+	chose = choses[0]
 	quota = R.quota(total, ids.size())
 	temps = R.DUREE_NUIT
 	charge = 0
@@ -456,7 +480,12 @@ func commencer(graine: int, ids: Array, pseudos: Array) -> void:
 	micro.regler(ui.micro() and DisplayServer.get_name() != "headless")
 	sons.nuit(true)
 	ui.partie()
-	if maison.bonus.is_empty():
+	doses = {}
+	ma_dose = 0.0
+	ui.dose(0.0, 0.0, false)
+	if maison.lieu == "bunker":
+		ui.annoncer("Le bunker : trois niveaux sous terre, par l'escalier au bout du couloir. Ils sont %d là-dessous.\nChargez pour %d € avant 6 h. Fuyez ce qui luit en vert." % [choses.size(), quota], 10.0)
+	elif maison.bonus.is_empty():
 		ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez.%s" % [quota, "\nL'escalier est au bout du couloir : un étage, un sous-sol." if maison.niveaux.size() > 1 else ""], 9.0)
 	else:
 		var noms: Array = maison.bonus.map(func(b): return maison.NOMS[b])
@@ -508,10 +537,8 @@ func _meubler(graine: int) -> void:
 		o.bonus = d.get("bonus", false)
 		if o.bonus:                      # la prime ne compte pas dans le quota : c'est en plus
 			prime += o.valeur
-		elif maison.niveau_de(d.pos.y) == 0:
-			total += o.valeur
-		else:                            # à l'étage, au sous-sol : cela pèse moins dans le quota
-			total += int(o.valeur * R.PART_ETAGES)
+		else:                            # (à l'étage, au sous-sol, au fond du bunker : cela pèse moins dans le quota)
+			total += int(o.valeur * maison.poids(maison.niveau_de(d.pos.y)))
 
 
 func ajouter_joueur(id: int, ou: Vector3, rang: int, pseudo: String = "Porteur"):
@@ -567,12 +594,12 @@ func _demande(qui: int, quoi: String, args: Array) -> void:
 				var ou: Vector3 = args[0]
 				if ou.distance_to(joueurs[qui].global_position) > R.LEURRE_PORTEE + 3.0:
 					ou = joueurs[qui].global_position
-				chose.entendre(ou, R.LEURRE_BRUIT)
+				_entendre(ou, R.LEURRE_BRUIT)
 				son_a.rpc("vote", ou, 4.0)
 				son_a.rpc("klaxon", ou, -6.0)
 		"heurt":                         # il s'est cogné, ou il est retombé : tout le monde l'entend, le fantôme aussi
 			var rayon := clampf(float(args[0]) if args.size() >= 1 and typeof(args[0]) in [TYPE_FLOAT, TYPE_INT] else 0.0, 0.0, 20.0)
-			chose.entendre(joueurs[qui].global_position, rayon)
+			_entendre(joueurs[qui].global_position, rayon)
 			son_a.rpc("choc", joueurs[qui].global_position + Vector3(0.0, 0.4, 0.0), clampf(rayon - 16.0, -10.0, 2.0))
 
 
@@ -595,8 +622,9 @@ func prendre(qui: int, ido: int) -> void:
 	objet_info.rpc(ido, o.valeur, o.prises + o.accroches(j, libres))
 	if o.maudit and not o.eveille:   # on ne touche pas au grimoire : dans la maison, ça s'entend de partout
 		o.eveille = true
-		chose.reveiller()
-		chose.entendre(o.global_position, 80.0)
+		for c in choses:
+			c.reveiller()
+		_entendre(o.global_position, 80.0)
 		annonce.rpc("%s a pris le grimoire. Quelque chose, dans la maison, a tourné la tête." % j.nom)
 
 
@@ -630,7 +658,7 @@ func arracher(qui: int, cote: int, ido: int) -> void:
 	attente[cote] = R.BRAS_REPOUSSE
 	bras[qui] = attente
 	bras_arrache.rpc(qui, cote, ido, point)
-	chose.entendre(o.global_position, R.BRUIT_ARRACHE)
+	_entendre(o.global_position, R.BRUIT_ARRACHE)
 	objet_info.rpc(ido, o.valeur, reste)
 
 
@@ -661,7 +689,7 @@ func klaxonner(qui: int) -> void:
 		return
 	var ou := Vector3(maison.camion.get_center().x, 1.5, maison.camion.get_center().y)
 	son_a.rpc("klaxon", ou, 4.0)
-	chose.entendre(ou, R.BRUIT_KLAXON)
+	_entendre(ou, R.BRUIT_KLAXON)
 	if charge >= quota:
 		finir(true, "Le camion part, chargé.")
 	else:
@@ -679,8 +707,14 @@ func tuer(qui: int) -> void:
 
 
 # la chose a vu un porteur : elle crie, et lui le sait
-func reperer(qui: int, par_la_torche: bool = false) -> void:
-	repere.rpc(qui, chose.global_position, par_la_torche)
+func reperer(qui: int, par_la_torche: bool = false, d_ou: Vector3 = Vector3.INF) -> void:
+	repere.rpc(qui, d_ou if d_ou.is_finite() else chose.global_position, par_la_torche)
+
+
+# un bruit : toutes les créatures qui sont à portée l'entendent
+func _entendre(ou: Vector3, rayon: float) -> void:
+	for c in choses:
+		c.entendre(ou, rayon)
 
 
 # ce que ce porteur a emporté (chez l'hôte)
@@ -714,6 +748,11 @@ func trousse_servie() -> void:
 	_screamer()
 	bourse.consommer("trousse")
 	ui.annoncer("Ta trousse de secours t'a sauvé la mise. Elle est vide.", 4.0)
+
+
+@rpc("authority", "call_remote", "unreliable")
+func dose_recue(d: float) -> void:
+	ma_dose = clampf(d, 0.0, 1.0)
 
 
 # le fantôme vient de vous attraper : sa face vous saute au visage, et hurle
@@ -794,7 +833,7 @@ func objets_etat(d: PackedFloat32Array) -> void:
 
 
 @rpc("authority", "call_remote", "unreliable")
-func partie_etat(t: float, c: int, ou: Vector3, yaw: float, mode: int, bute: bool) -> void:
+func partie_etat(t: float, c: int, ou: Vector3, yaw: float, mode: int, bute: bool, autres: Array = []) -> void:
 	temps = t
 	charge = c
 	if chose != null:
@@ -802,6 +841,13 @@ func partie_etat(t: float, c: int, ou: Vector3, yaw: float, mode: int, bute: boo
 		chose.cible_yaw = yaw
 		chose.mode = clampi(mode, 0, 4)
 		chose.bute = bute
+	for k in range(1, choses.size()):              # les autres créatures : [où, vers où, quoi, bute] chacune
+		var i := (k - 1) * 4
+		if i + 3 < autres.size() and typeof(autres[i]) == TYPE_VECTOR3:
+			choses[k].cible_pos = autres[i]
+			choses[k].cible_yaw = float(autres[i + 1])
+			choses[k].mode = clampi(int(autres[i + 2]), 0, 4)
+			choses[k].bute = bool(autres[i + 3])
 
 
 @rpc("authority", "call_local", "reliable")
@@ -902,7 +948,7 @@ func fin(victoire: bool, c: int, q: int, raison: String, facture: Dictionary = {
 		comptes += "\n" + bourse.dire()
 		_dire_bourse()
 	ui.fin("%s\n\n%s\nChargé : %d € sur %d € demandés.\n%d porteur(s) sur %d voient le jour."
-		% ["LE MANOIR EST VIDÉ" if victoire else "LE MANOIR A GAGNÉ", raison, c, q, vivants, joueurs.size()], serveur, comptes)
+		% [("LE BUNKER EST VIDÉ" if victoire else "LE BUNKER A GAGNÉ") if maison != null and maison.lieu == "bunker" else ("LE MANOIR EST VIDÉ" if victoire else "LE MANOIR A GAGNÉ"), raison, c, q, vivants, joueurs.size()], serveur, comptes)
 
 
 # --- les sabotages ---
@@ -917,7 +963,7 @@ func _effet(nom: String, actif: bool, param: int) -> void:
 			if param >= 0 and param < maison.portes.size():
 				sons.jouer_a("porte", maison.portes[param].centre, 6.0)
 				if serveur and actif and chose != null:      # une porte qui claque : il l'entend
-					chose.entendre(maison.portes[param].centre, R.BRUIT_PORTE)
+					_entendre(maison.portes[param].centre, R.BRUIT_PORTE)
 		"torches":
 			for j in joueurs.values():
 				j.torche_ok = not actif
@@ -947,7 +993,7 @@ func _sur_vote(gagnant: String) -> void:
 		if vivants.is_empty():
 			return
 		ou = vivants[hasard.randi_range(0, vivants.size() - 1)].global_position + Vector3.UP
-		chose.entendre(ou, 26.0)
+		_entendre(ou, 26.0)
 	sabotage.rpc(gagnant, R.SABOTAGES[gagnant].duree, param, ou)
 
 
@@ -974,13 +1020,13 @@ func _sur_choc(o, dv: float) -> void:
 	o.valeur = maxi(o.valeur - perte, 0)
 	if o.valeur != avant:
 		objet_info.rpc(o.id, o.valeur, o.prises)
-	chose.entendre(o.global_position, clampf(3.0 + dv * sqrt(o.mass) * 0.55, 3.0, 22.0))
+	_entendre(o.global_position, clampf(3.0 + dv * sqrt(o.mass) * 0.55, 3.0, 22.0))
 	son_a.rpc("casse" if o.valeur != avant and o.fragile > 0.5 else "choc", o.global_position, clampf(dv * 2.0 - 12.0, -12.0, 6.0))
 
 
 # un meuble lourd qu'on traîne : il racle, et cela s'entend d'autant plus loin qu'il pèse
 func _sur_traine(o) -> void:
-	chose.entendre(o.global_position, R.BRUIT_TRAINE + sqrt(o.mass))
+	_entendre(o.global_position, R.BRUIT_TRAINE + sqrt(o.mass))
 	son_a.rpc("frotte", o.global_position, clampf(sqrt(o.mass) - 14.0, -12.0, 0.0))
 
 
@@ -999,9 +1045,12 @@ func _physics_process(dt: float) -> void:
 		return
 	temps -= dt
 	if chose.mode == Creature.DORT and R.DUREE_NUIT - temps > repit:
-		chose.reveiller()
-		annonce.rpc("Quelque chose s'est réveillé dans le manoir. Ça n'y voit presque pas, mais ça entend tout.")
-	chose.avancer(dt)
+		for c in choses:
+			c.reveiller()
+		annonce.rpc("Quelque chose s'est réveillé dans le manoir. Ça n'y voit presque pas, mais ça entend tout." if choses.size() == 1
+			else "Ils se sont réveillés, là-dessous. Ils sont %d. Ils n'y voient presque pas, mais ils entendent tout." % choses.size())
+	for c in choses:
+		c.avancer(dt)
 	for qui in bras:
 		bras[qui] = [maxf(bras[qui][0] - dt, 0.0), maxf(bras[qui][1] - dt, 0.0)]
 	for qui in blessures.keys():           # la peur bleue ne passe qu'au camion : il faut y rester un moment
@@ -1013,12 +1062,36 @@ func _physics_process(dt: float) -> void:
 		if blessures[qui] >= R.REPRISE:
 			blessures.erase(qui)
 			blessure.rpc(qui, false)
+	# la radioactivité : dans une zone, la dose monte ; dehors, elle retombe ; pleine, on en meurt
+	if not maison.radios.is_empty():
+		_t_dose -= dt
+		for j in joueurs.values():
+			if not j.vivant:
+				continue
+			var r: float = maison.radiation(j.global_position)
+			var d: float = doses.get(j.id, 0.0)
+			if r > 0.0:
+				d += r * dt / R.DOSE_MORTELLE * (R.COMBINAISON if a_equipe(j.id, "combinaison") else 1.0)
+			else:
+				d = maxf(d - dt / R.DOSE_REPOS, 0.0)
+			doses[j.id] = d
+			if d >= 1.0:
+				doses[j.id] = 0.0
+				annonce.rpc("%s a pris trop de radiations." % j.nom)
+				tuer(j.id)
+			elif _t_dose <= 0.0:
+				if j.id == mon_id:
+					ma_dose = d
+				else:
+					dose_recue.rpc_id(j.id, d)
+		if _t_dose <= 0.0:
+			_t_dose = 0.25
 	_t_ecoute -= dt
 	if _t_ecoute <= 0.0:
 		_t_ecoute = 0.25
 		for j in joueurs.values():
 			if j.vivant and j.bruit > 0.5:
-				chose.entendre(j.global_position, j.bruit)
+				_entendre(j.global_position, j.bruit)
 	_t_charge -= dt
 	if _t_charge <= 0.0:
 		_t_charge = 0.5
@@ -1033,7 +1106,10 @@ func _physics_process(dt: float) -> void:
 		_t_etat -= dt
 		if _t_etat <= 0.0:
 			_t_etat = 0.1
-			partie_etat.rpc(temps, charge, chose.global_position, chose.rotation.y, chose.mode, chose.bute)
+			var autres: Array = []
+			for k in range(1, choses.size()):
+				autres.append_array([choses[k].global_position, choses[k].rotation.y, choses[k].mode, choses[k].bute])
+			partie_etat.rpc(temps, charge, chose.global_position, chose.rotation.y, chose.mode, chose.bute, autres)
 		_t_objets -= dt
 		if _t_objets <= 0.0:
 			_t_objets = 0.05
@@ -1084,7 +1160,7 @@ func _temoigner(dt: float) -> void:
 		pseudos[str(j.id)] = j.nom
 	var t := {"etat": ["menu", "salon", "partie", "fin"][etat], "connecte": compte.connecte, "pseudo": compte.nom(), "avis": ui._avis.text,
 		"refus": ui._connexion_avis.text, "a_changer": compte.a_changer, "avis_compte": compte.avis, "erreur_compte": compte.erreur, "code": salon.code, "numero": salon.numero, "membres": salon.membres, "relies": Array(multiplayer.get_peers()),
-		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "argent": bourse.argent, "achats": bourse.objets, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
+		"hote": serveur, "regard": [snappedf(moi.yaw, 0.01), snappedf(moi.pitch, 0.01)] if moi != null else [], "joueurs": ou, "pseudos": pseudos, "meubles": objets.size(), "pieces": maison.pieces.size() if maison != null else 0, "bonus": maison.bonus if maison != null else [], "prime": prime, "lieu": maison.lieu if maison != null else lieu, "creatures": choses.size(), "dose": snappedf(ma_dose, 0.01), "argent": bourse.argent, "achats": bourse.objets, "graine": graine_jouee, "mailles": _mailles(), "haut": snappedf(moi.global_position.y, 0.01) if moi != null else 0.0, "ips": Engine.get_frames_per_second(),
 		"bras": moi.repousse if moi != null else [], "quota": quota, "reperes": ui.reperes()}
 	if maison != null:
 		t["cage"] = [maison.cage.position.x, maison.cage.position.y, maison.cage.size.x, maison.cage.size.y]
@@ -1113,15 +1189,25 @@ func _process(dt: float) -> void:
 	if tactile.actif:        # au doigt, les boutons disent déjà quoi presser
 		indice = indice.replace(" · E : poser · clic droit : lancer", "").replace("E : poser · clic droit : lancer", "").replace("E : ", "Agir : ")
 	ui.dire(temps, charge, quota, moi.bruit, indice)
+	if not maison.radios.is_empty():       # le compteur : il crépite d'autant plus qu'on est près, et l'écran verdit avec la dose
+		var rayonne: float = maison.radiation(moi.global_position) if moi.vivant else 0.0
+		ui.dose(ma_dose, rayonne, true)
+		_t_geiger -= dt
+		if rayonne > 0.0 and _t_geiger <= 0.0:
+			_t_geiger = randf_range(0.02, 0.5) / (0.3 + rayonne * 3.0)
+			sons.jouer("geiger", -10.0 + rayonne * 6.0, randf_range(0.9, 1.2))
 	_t_niveaux -= dt
 	if _t_niveaux <= 0.0:
 		_t_niveaux = 0.25
 		_niveler()
 	ui.vote(_vote.ouvert, _vote.options, _vote.voix, _vote.reste)
 	# le cœur bat quand la chose est près
-	var d: float = moi.global_position.distance_to(chose.global_position)
+	var d := 1e9                           # (la plus proche de celles qui sont éveillées)
+	for c in choses:
+		if c.mode != Creature.DORT:
+			d = minf(d, moi.global_position.distance_to(c.global_position))
 	_t_coeur -= dt
-	if moi.vivant and chose.mode != Creature.DORT and d < 10.0 and _t_coeur <= 0.0:
+	if moi.vivant and d < 10.0 and _t_coeur <= 0.0:
 		_t_coeur = remap(d, 0.0, 10.0, 0.45, 1.3)
 		sons.jouer("coeur", remap(d, 0.0, 10.0, 2.0, -14.0))
 

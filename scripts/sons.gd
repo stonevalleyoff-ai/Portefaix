@@ -19,6 +19,7 @@ func _ready() -> void:
 	_r.seed = 11
 	_brefs["pas"] = _wav(_frappe(0.09, 95.0, 0.5))
 	_brefs["choc"] = _wav(_frappe(0.28, 70.0, 0.7))
+	_brefs["geiger"] = _wav(_frappe(0.012, 2400.0, 1.0))
 	_brefs["frotte"] = _wav(_raclement(0.4))
 	_brefs["screamer"] = _wav(_hurlement(1.1))
 	_brefs["casse"] = _wav(_eclats(0.45))

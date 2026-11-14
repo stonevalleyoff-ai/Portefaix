@@ -44,6 +44,21 @@ static func matiere(sorte: String) -> StandardMaterial3D:
 		"pierre":
 			im = _moellons(h)
 			m.uv1_scale = Vector3(0.5, 0.5, 0.5)
+		"beton":
+			im = _beton(h)
+			m.uv1_scale = Vector3(0.5, 0.5, 0.5)
+		"metal":
+			im = _toles(h)
+			m.uv1_scale = Vector3(1.0, 1.0, 1.0)
+		"grille":
+			im = _mailles(h)
+			m.uv1_scale = Vector3(2.0, 2.0, 2.0)
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			m.alpha_scissor_threshold = 0.5
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		"lueur":                          # ce qui luit : un écran, un voyant, une flamme (sa couleur, sans ombre)
+			im = _bruit(h, 8, 0.96, 1.0)
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		"herbe":
 			im = _bruit(h, 32, 0.55, 1.0)
 			m.uv1_scale = Vector3(0.4, 0.4, 0.4)
@@ -68,6 +83,49 @@ static func _bruit(h: RandomNumberGenerator, cote: int, de: float, a: float, fil
 		for y in cote:
 			var v := lerpf(fil, h.randf_range(de, a), 0.35) if fils else h.randf_range(de, a)
 			im.set_pixel(x, y, Color(v, v, v))
+	return im
+
+
+# du béton banché : les joints des coffrages, les trous des tiges, des coulures
+static func _beton(h: RandomNumberGenerator) -> Image:
+	var im := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	var coulures := []
+	for x in 64:
+		coulures.append(h.randf_range(0.0, 1.0))
+	for x in 64:
+		for y in 64:
+			var v := h.randf_range(0.84, 1.0)
+			if x % 32 == 0 or y % 32 == 0:
+				v *= 0.7
+			if (x % 32 == 8 or x % 32 == 24) and (y % 32 == 8 or y % 32 == 24):
+				v = 0.45
+			if coulures[x] > 0.9 and y % 32 < 4 + int(coulures[x] * 100.0) % 22:
+				v *= 0.82
+			im.set_pixel(x, y, Color(v, v, v * 0.98))
+	return im
+
+
+# des tôles rivetées
+static func _toles(h: RandomNumberGenerator) -> Image:
+	var im := Image.create(32, 32, false, Image.FORMAT_RGB8)
+	for x in 32:
+		for y in 32:
+			var v := h.randf_range(0.88, 1.0)
+			if x % 16 == 0 or y % 16 == 0:
+				v *= 0.6
+			if (x % 16 == 3 or x % 16 == 13) and (y % 16 == 3 or y % 16 == 13):
+				v = 1.0
+			im.set_pixel(x, y, Color(v, v, v))
+	return im
+
+
+# un caillebotis : des barres, et le vide entre elles
+static func _mailles(_h: RandomNumberGenerator) -> Image:
+	var im := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	for x in 16:
+		for y in 16:
+			var plein := x % 8 < 2 or y % 8 < 2
+			im.set_pixel(x, y, Color(1, 1, 1, 1) if plein else Color(0, 0, 0, 0))
 	return im
 
 

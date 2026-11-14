@@ -39,18 +39,30 @@ const LUEURS := {"cave": [Color(1.0, 0.18, 0.1), 0.9], "arcade": [Color(0.7, 0.3
 const NOMS := {"cave": "la cave au rituel", "garage": "le garage", "tresor": "la chambre forte", "arcade": "la salle d'arcade",
 	"nains": "le cercle des nains", "trone": "la salle du trône", "salon": "le salon", "manger": "la salle à manger", "cuisine": "la cuisine", "chambre": "une chambre", "bureau": "le bureau",
 	"bain": "la salle de bain", "debarras": "le débarras", "entree": "l'entrée", "couloir": "le couloir",
-	"palier": "l'escalier", "buanderie": "la buanderie", "chaufferie": "la chaufferie"}
+	"palier": "l'escalier", "buanderie": "la buanderie", "chaufferie": "la chaufferie",
+	"passerelle": "la passerelle", "garde": "le poste de garde", "vestiaire": "le vestiaire", "reserve": "une réserve", "dortoir": "un dortoir", "refectoire": "le réfectoire",
+	"controle": "la salle de contrôle", "infirmerie": "l'infirmerie", "hall": "le hall des machines", "armurerie": "l'armurerie", "citerne": "les citernes",
+	"dechets": "le dépôt de déchets", "reacteur": "le réacteur"}
 # le sol de chaque métier : du parquet, du carrelage
 const SOLS := {"cave": Color(0.15, 0.14, 0.15), "garage": Color(0.4, 0.4, 0.41), "tresor": Color(0.2, 0.22, 0.28), "arcade": Color(0.2, 0.1, 0.3),
 	"nains": Color(0.16, 0.4, 0.16), "trone": Color(0.45, 0.07, 0.1), "salon": Color(0.36, 0.25, 0.16), "manger": Color(0.38, 0.27, 0.17), "chambre": Color(0.4, 0.3, 0.2), "bureau": Color(0.3, 0.21, 0.14),
 	"cuisine": Color(0.5, 0.5, 0.46), "bain": Color(0.45, 0.52, 0.55), "debarras": Color(0.3, 0.29, 0.27), "entree": Color(0.3, 0.22, 0.15),
-	"couloir": Color(0.28, 0.2, 0.14), "buanderie": Color(0.42, 0.44, 0.45), "chaufferie": Color(0.24, 0.23, 0.22), "palier": Color(0.22, 0.16, 0.11)}
+	"couloir": Color(0.28, 0.2, 0.14), "buanderie": Color(0.42, 0.44, 0.45), "chaufferie": Color(0.24, 0.23, 0.22), "palier": Color(0.22, 0.16, 0.11),
+	"passerelle": Color(0.2, 0.2, 0.2), "garde": Color(0.36, 0.38, 0.36), "vestiaire": Color(0.34, 0.36, 0.4), "reserve": Color(0.36, 0.34, 0.3), "dortoir": Color(0.3, 0.36, 0.34),
+	"refectoire": Color(0.4, 0.38, 0.33), "controle": Color(0.24, 0.3, 0.36), "infirmerie": Color(0.46, 0.5, 0.5), "hall": Color(0.26, 0.27, 0.28), "armurerie": Color(0.3, 0.32, 0.28),
+	"citerne": Color(0.24, 0.28, 0.3), "dechets": Color(0.3, 0.36, 0.2), "reacteur": Color(0.22, 0.34, 0.24)}
 const PAS := R.HAUTEUR + 0.3      # d'un plancher au suivant
 const CAGE := 10                  # la cage d'escalier, au bout du couloir : dix cases de long, quatre de large
 const PLATEAU := 0.35             # la hauteur du plancher du camion
 const COUR := 14                  # les lignes de cour devant la maison, clôturées
 const PORTE_HAUT := 2.2
 
+var lieu := "manoir"              # le manoir, ou le bunker
+var tanieres: Array = []          # là où dorment les créatures : une au manoir, une par niveau enterré au bunker
+var puits: Array = []             # là où l'on voit d'un niveau à l'autre : la cage d'escalier, les halls à double hauteur (des Rect2)
+var radios: Array = []            # les zones radioactives : {rect: Rect2, niveau}
+var _antres: Array = []           # la pièce de chaque tanière : [Rect2i, niveau]
+var _vu_puits := -1
 var plan: Array = []              # les lignes du plan du rez-de-chaussée
 var plans := {}                   # le plan de chaque niveau : -1 le sous-sol, 0 le rez-de-chaussée, 1 l'étage
 var niveaux: Array = [0]
@@ -96,6 +108,8 @@ func construire(graine: int) -> void:
 			h.seed = 7
 			_etager(h, plan[0].length(), plan.size(), 7)
 		_primer(bonus_voulu)
+	elif lieu == "bunker":
+		_inventer_bunker(graine)
 	else:
 		_inventer(graine)
 	plans[0] = plan
@@ -115,7 +129,15 @@ func construire(graine: int) -> void:
 	for n in niveaux:
 		_murs(n)
 	_marches()
-	_dehors()
+	if lieu == "bunker":
+		for n in niveaux:
+			_caillebotis(n)
+			_garde_corps(n)
+		_dehors_bunker()
+	else:
+		_dehors()
+	if cage.size.x > 0:
+		puits.push_front(Rect2(cage))
 	_lampes()
 	_camion()
 	for n in niveaux:
@@ -126,6 +148,167 @@ func construire(graine: int) -> void:
 
 
 # --- l'invention d'un plan ---
+
+# Le bunker. Une entrée en surface (un poste de garde, un vestiaire), puis trois niveaux sous terre : la vie (dortoirs, réfectoire,
+# salle de contrôle), les machines (un grand hall, des réserves, les déchets), et le fond (le réacteur, les citernes). Chaque niveau a
+# son long couloir. Au bout, une grande cage d'escalier : deux volées qui alternent d'un niveau à l'autre, et une coursive entre elles.
+# Le hall des machines monte sur deux niveaux : au niveau du dessus, à sa place, il n'y a que le vide, et une passerelle en caillebotis
+# qui le traverse. Les déchets et le réacteur sont radioactifs.
+func _inventer_bunker(graine: int) -> void:
+	var h := RandomNumberGenerator.new()
+	h.seed = graine * 31 + 7
+	var L: int = [29, 31, 33, 35][h.randi_range(0, 3)]
+	var P: int = [19, 21, 23][h.randi_range(0, 2)]
+	var c := P / 2 - 1
+	niveaux = [-3, -2, -1, 0]
+	cage = Rect2i(L - 1, c - 2, CAGE, 6)
+	var couloir := Rect2i(1, c, L - 2, 2)
+	var grilles_ := {}                 # le plan de chaque niveau, en cases
+	var chambres_ := {}
+	for n: int in [0, -2, -1, -3]:          # (les machines avant la vie : le hall décide de ce qu'il y a au-dessus de lui)
+		var g: Array = []
+		for z in P:
+			var ligne: Array = []
+			for x in L + CAGE:
+				ligne.append("#")
+			g.append(ligne)
+		_creuser(g, couloir)
+		var chambres: Array = []
+		if n == 0:                     # en surface : l'entrée, et de part et d'autre deux ou trois pièces
+			var le := h.randi_range(4, 6)
+			var ex := h.randi_range(6, L - le - 6)
+			var entree := Rect2i(ex, c + 2, le, P - c - 3)
+			_creuser(g, entree)
+			g[P - 1][ex + le / 2 - 1] = "P"
+			g[P - 1][ex + le / 2] = "P"
+			_bande(g, h, chambres, 1, ex - 2, c + 3, P - 2, false)
+			_bande(g, h, chambres, ex + le + 1, L - 2, c + 3, P - 2, false)
+			var lieux: Array = [couloir, entree]
+			lieux.append_array(chambres)
+			_relier(g, h, lieux, true)
+			pieces.append({"type": "entree", "nom": "le sas", "rect": entree, "niveau": 0})
+		else:
+			_bande(g, h, chambres, 1, L - 2, 1, c - 2, true)
+			_bande(g, h, chambres, 1, L - 2, c + 3, P - 2, false)
+			var lieux: Array = [couloir]
+			lieux.append_array(chambres)
+			_relier(g, h, lieux, false)
+		grilles_[n] = g
+		chambres_[n] = chambres
+	# le hall : la plus grande pièce du niveau des machines qui touche le couloir par le fond ; au-dessus d'elle, le vide
+	var hall := Rect2i()
+	for r in chambres_[-2]:
+		if r.end.y == c - 1 and r.size.x >= 5 and r.get_area() > hall.get_area():
+			hall = r
+	if hall.get_area() > 0:
+		var g: Array = grilles_[-1]
+		var garde: Array = []
+		for r in chambres_[-1]:        # les pièces qui étaient là s'effacent devant lui
+			if r.grow(1).intersects(hall.grow(1)):
+				for z in range(r.position.y - 1, r.end.y + 1):
+					for x in range(r.position.x - 1, r.end.x + 1):
+						if z >= 1 and z < c - 1 and x >= 1 and x < L - 1:
+							g[z][x] = "#"
+			else:
+				garde.append(r)
+		chambres_[-1] = garde
+		for z in range(hall.position.y, hall.end.y):
+			for x in range(hall.position.x, hall.end.x):
+				g[z][x] = "v"
+		for x in range(hall.position.x - 1, hall.end.x + 1):      # ses murs montent jusqu'en haut
+			g[hall.position.y - 1][x] = "#"
+			g[hall.end.y][x] = "#"
+		# la passerelle : du couloir, tout droit à travers le hall, jusqu'à une plate-forme au fond
+		var px := hall.position.x + hall.size.x / 2 - 1
+		for z in range(hall.position.y, hall.end.y):
+			g[z][px] = "g"
+			g[z][px + 1] = "g"
+		for x in range(hall.position.x, hall.end.x):
+			g[hall.position.y][x] = "g"
+			g[hall.position.y + 1][x] = "g"
+		g[c - 1][px] = "D"
+		g[c - 1][px + 1] = "D"
+		pieces.append({"type": "passerelle", "nom": NOMS["passerelle"], "rect": hall, "niveau": -1})
+		puits.append(Rect2(hall))
+		# (une pièce du niveau de la vie que le hall a coupée du couloir retrouve une porte)
+		var lieux: Array = [couloir]
+		lieux.append_array(garde)
+		_relier(g, h, lieux, false)
+	for n in niveaux:
+		var g: Array = grilles_[n]
+		_creuser_cage_bunker(g, n)
+		var lignes: Array = []
+		for ligne in g:
+			lignes.append("".join(ligne))
+		plans[n] = lignes
+		pieces.append({"type": "couloir", "nom": "le couloir" if n == 0 else "le couloir du niveau %d" % n, "rect": couloir, "niveau": n})
+		pieces.append({"type": "palier", "nom": NOMS["palier"], "rect": cage, "niveau": n})
+		_metiers_bunker(chambres_[n], n, hall)
+	plan = plans[0]
+	# les volées : de chaque niveau à celui d'en dessous, tantôt au sud (du palier ouest, en descendant vers l'est), tantôt au nord
+	var x := float(cage.position.x)
+	var z := float(cage.position.y)
+	for n: int in [0, -1, -2]:
+		var sud: bool = n % 2 == 0
+		var zc := z + (5.0 if sud else 1.0)
+		var haut := Vector3(x + (1.0 if sud else 9.0), y_de(n), zc)
+		var bas := Vector3(x + (9.0 if sud else 1.0), y_de(n - 1), zc)
+		escaliers.append({"de": n - 1, "bas": bas, "haut": haut, "rect": Rect2(x + 2.0, z + (4.0 if sud else 0.0), 6.0, 2.0), "xb": x + (8.0 if sud else 2.0), "xh": x + (2.0 if sud else 8.0)})
+	for piece in pieces:               # ce qui brûle : les déchets, le réacteur
+		if piece.type in ["dechets", "reacteur"]:
+			radios.append({"rect": Rect2(piece.rect), "niveau": piece.niveau})
+
+
+# la cage du bunker, à ce niveau : six cases de large. La volée qui descend d'ici (« v » : le vide au-dessus d'elle), celle qui arrive
+# d'en dessous (« e »), la coursive du milieu et le palier est (aux niveaux impairs, où les volées se retournent)
+func _creuser_cage_bunker(g: Array, n: int) -> void:
+	var pair := n % 2 == 0
+	var fond: bool = n == niveaux.min()
+	for k in CAGE:
+		for r in 6:
+			var l := "#"
+			if k < 2:
+				l = "."
+			elif k >= 8:
+				l = "#" if pair else "."
+			elif r == 2 or r == 3:
+				l = "#" if pair else "."
+			else:
+				var sud := r >= 4
+				if not fond and sud == pair:           # la volée qui descend d'ici
+					l = "v"
+				elif n < 0 and sud != pair:            # celle qui monte d'ici vers le niveau du dessus
+					l = "e"
+			g[cage.position.y + r][cage.position.x + k] = l
+
+
+# les métiers du bunker, niveau par niveau
+func _metiers_bunker(chambres: Array, n: int, hall: Rect2i) -> void:
+	var ordre: Array = range(chambres.size())
+	ordre.sort_custom(func(a, b): return chambres[a].get_area() > chambres[b].get_area() or (chambres[a].get_area() == chambres[b].get_area() and a < b))
+	var metier := {}
+	var suite := ["garde", "vestiaire", "reserve", "vestiaire"]
+	if n == -1:
+		suite = ["dortoir", "controle", "dortoir", "infirmerie", "reserve", "dortoir"]
+		if not ordre.is_empty():
+			metier[ordre[0]] = "refectoire"
+	elif n == -2:
+		suite = ["dechets", "reserve", "armurerie", "citerne", "reserve", "armurerie", "reserve", "citerne", "reserve", "armurerie", "reserve"]
+		for i in chambres.size():
+			if chambres[i] == hall:
+				metier[i] = "hall"
+	elif n == -3:
+		suite = ["citerne", "reserve", "dortoir", "armurerie", "reserve", "citerne"]
+		if not ordre.is_empty():
+			metier[ordre[0]] = "reacteur"
+	var k := 0
+	for i in ordre:
+		if not metier.has(i):
+			metier[i] = suite[k % suite.size()]
+			k += 1
+	for i in chambres.size():
+		pieces.append({"type": metier[i], "nom": NOMS[metier[i]], "rect": chambres[i], "niveau": n})
+
 
 func _inventer(graine: int) -> void:
 	var h := RandomNumberGenerator.new()
@@ -434,6 +617,22 @@ func niveau_de(y: float) -> int:
 	return clampi(int(floor((y + 0.8) / PAS)), niveaux.min(), niveaux.max())
 
 
+# ce que pèse un niveau dans le quota : en entier là où l'on entre (et au premier sous-sol du bunker), pour un tiers plus loin
+func poids(n: int) -> float:
+	return 1.0 if (n == 0 or (lieu == "bunker" and n == -1)) else R.PART_ETAGES
+
+
+# la radioactivité en ce point : de 0 (rien) à 1 (au cœur d'une zone)
+func radiation(p: Vector3) -> float:
+	var n := niveau_de(p.y)
+	var pire := 0.0
+	for z in radios:
+		if z.niveau == n:
+			var d: float = 0.0 if z.rect.has_point(Vector2(p.x, p.z)) else Vector2(maxf(maxf(z.rect.position.x - p.x, p.x - z.rect.end.x), 0.0), maxf(maxf(z.rect.position.y - p.z, p.z - z.rect.end.y), 0.0)).length()
+			pire = maxf(pire, clampf(1.0 - d / 2.0, 0.0, 1.0))      # (elle déborde de deux mètres, en s'éteignant)
+	return pire
+
+
 # la couche de ce qu'on voit à ce niveau. Une seule pour tous : séparer les niveaux par couches, chacune avec ses lampes, laissait l'écran
 # noir sous Firefox (Windows). On n'en a plus besoin : seules les lampes du niveau où l'on est sont allumées (regarder_de).
 func couche(_n: int) -> int:
@@ -583,14 +782,18 @@ const AUTOUR_CAGE := 9.0
 
 # voit-on ce point, d'où l'on est ? Ce qui est à son niveau, toujours ; d'un autre, seulement autour de la cage, quand on en est près
 func en_vue(p: Vector3, n: int) -> bool:
-	return n == _vu_n or (_vu_pres and Rect2(cage).grow(AUTOUR_CAGE).has_point(Vector2(p.x, p.z)))
+	return n == _vu_n or (_vu_puits >= 0 and puits[_vu_puits].grow(AUTOUR_CAGE).has_point(Vector2(p.x, p.z)))
 
 
 # le joueur est à ce niveau, à cet endroit : n'allumer que les lampes qu'il peut voir (le moteur n'en dessine qu'une trentaine à la fois,
 # et un téléphone bien moins sans peine ; au-delà, l'écran s'éteint)
 func regarder_de(p: Vector3) -> void:
 	_vu_n = niveau_de(p.y)
-	_vu_pres = cage.size.x > 0 and Rect2(cage).grow(VUE_CAGE).has_point(Vector2(p.x, p.z))
+	_vu_puits = -1
+	for i in puits.size():                 # près de la cage, ou d'un hall : on voit ce qui l'entoure aux autres niveaux
+		if puits[i].grow(VUE_CAGE if i == 0 else 2.0).has_point(Vector2(p.x, p.z)):
+			_vu_puits = i
+	_vu_pres = _vu_puits >= 0
 	for l in lampes:
 		l.lumiere.visible = eclairee and en_vue(l.lumiere.position, l.niveau)
 
@@ -603,7 +806,18 @@ func _process(_dt: float) -> void:
 			continue
 		if l.force == 0.0:
 			l.force = l.lumiere.light_energy
-		l.lumiere.light_energy = l.force * (0.9 + 0.07 * sin(t * 7.3 + l.phase) + 0.05 * sin(t * 17.9 + l.phase * 2.3))
+		match l.genre:
+			0:
+				l.lumiere.light_energy = l.force * (0.9 + 0.07 * sin(t * 7.3 + l.phase) + 0.05 * sin(t * 17.9 + l.phase * 2.3))
+			1:                       # un néon : il bourdonne
+				l.lumiere.light_energy = l.force * (0.94 + 0.06 * sin(t * 50.0 + l.phase))
+			2:                       # un néon qui grésille : il s'éteint par à-coups, parfois longtemps
+				var coupe := sin(t * 1.7 + l.phase) > 0.55 and sin(t * 23.0 + l.phase * 3.0) > -0.2
+				var noir := sin(t * 0.31 + l.phase * 1.7) > 0.86
+				l.lumiere.light_energy = 0.0 if (coupe or noir) else l.force * (0.8 + 0.2 * sin(t * 37.0 + l.phase))
+			3:                       # un feu rouge : il tourne
+				l.lumiere.light_color = Color(1.0, 0.12, 0.08)
+				l.lumiere.light_energy = l.force * 1.3 * maxf(0.0, sin(t * 3.2 + l.phase))
 
 
 func lumieres(oui: bool) -> void:
@@ -655,7 +869,10 @@ func _teinte_qui_luit(lueur: float) -> StandardMaterial3D:
 func _boite(parent: Node3D, c: Vector3, t: Vector3, m: Material, solide: bool = true) -> void:
 	if parent == _decor and m is StandardMaterial3D and not m.emission_enabled:
 		# une boîte du décor : on ne la dessine pas seule, on la fondra avec ses voisines (_fondre)
-		var cle := "%s/%d/%d/%d" % [_matiere, int(floor(c.x / 6.0)), int(round(c.y / PAS)), int(floor(c.z / 6.0))]
+		var sorte := _matiere
+		if lieu == "bunker":                 # tout y est de béton
+			sorte = {"mur": "beton", "bois": "beton", "pierre": "beton"}.get(sorte, sorte)
+		var cle := "%s/%d/%d/%d" % [sorte, int(floor(c.x / 6.0)), int(round(c.y / PAS)), int(floor(c.z / 6.0))]
 		if not _pans.has(cle):
 			_pans[cle] = Boites.new()
 		_pans[cle].ajouter(c, t, m.albedo_color)
@@ -728,7 +945,7 @@ func _sol() -> void:
 	forme.position = Vector3(l * 0.5, -0.5, p + 60.0)
 	_decor.add_child(forme)
 	_matiere = "herbe"
-	_boite(_decor, Vector3(l * 0.5, -0.06, p + 44.9), Vector3(110.0, 0.1, 90.0), mat(Color(0.1, 0.15, 0.1)), false)          # l'herbe : devant la maison, pas dessous (elle bouchait l'escalier du sous-sol)
+	_boite(_decor, Vector3(l * 0.5, -0.06, p + 44.9), Vector3(110.0, 0.1, 90.0), mat(Color(0.1, 0.15, 0.1) if lieu != "bunker" else Color(0.2, 0.19, 0.17)), false)          # l'herbe : devant la maison, pas dessous (elle bouchait l'escalier du sous-sol)
 	_matiere = "pierre"
 	_boite(_decor, Vector3(porte_x, -0.04, p + 1.0), Vector3(3.0, 0.1, 2.0), mat(Color(0.42, 0.42, 0.44)), false)            # le seuil
 	_boite(_decor, Vector3(porte_x, -0.045, p + 2.6), Vector3(3.6, 0.1, 2.6), mat(Color(0.3, 0.3, 0.32)), false)             # l'allée
@@ -739,6 +956,8 @@ func _sol() -> void:
 		if piece.type == "palier":
 			continue
 		var r: Rect2i = piece.rect
+		if piece.type == "passerelle":
+			continue
 		_matiere = "pierre" if piece.type in ["cuisine", "bain", "buanderie", "chaufferie", "cave", "garage", "tresor"] else "bois"      # du carrelage, de la dalle, ou du parquet
 		_boite(_decor, Vector3(r.position.x + r.size.x * 0.5, y_de(piece.niveau) - 0.045, r.position.y + r.size.y * 0.5), Vector3(r.size.x, 0.1, r.size.y), mat(SOLS[piece.type]), false)
 	# la clôture de la cour : trois côtés
@@ -759,7 +978,7 @@ func _plancher(n: int, fond: bool) -> void:
 			var troue := false
 			for z in range(z0, z0 + t.y):
 				for x in range(x0, x0 + t.x):
-					troue = troue or lettre(x, z, n) == "v"
+					troue = troue or lettre(x, z, n) in ["v", "g"]
 			if not troue:
 				_dalle(n, fond, Rect2(x0, z0, t.x, t.y))
 				continue
@@ -767,7 +986,7 @@ func _plancher(n: int, fond: bool) -> void:
 				var x := x0
 				while x < x0 + t.x:
 					var k := 0
-					while x + k < x0 + t.x and lettre(x + k, z, n) != "v":
+					while x + k < x0 + t.x and not lettre(x + k, z, n) in ["v", "g"]:
 						k += 1
 					if k > 0:
 						_dalle(n, fond, Rect2(x, z, k, 1))
@@ -785,15 +1004,18 @@ func _dalle(n: int, fond: bool, r: Rect2) -> void:
 	_decor.add_child(forme)
 	if n <= niveaux.max():                 # le dessus, qu'éclairent les lampes de ce niveau
 		_matiere = "bois" if n >= 0 else "pierre"
-		_boite(_decor, milieu + Vector3(0, -0.085, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.3, 0.21, 0.14) if n >= 0 else Color(0.3, 0.3, 0.31)), false)
+		_boite(_decor, milieu + Vector3(0, -0.085, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.34, 0.35, 0.36) if lieu == "bunker" else (Color(0.3, 0.21, 0.14) if n >= 0 else Color(0.3, 0.3, 0.31))), false)
 	if not fond:                           # le dessous : le plafond du niveau d'en dessous
 		_matiere = "bois"                      # (un plafond à lattes, sombre)
-		_boite(_decor, milieu + Vector3(0, -0.225, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.2, 0.16, 0.13)), false)
+		_boite(_decor, milieu + Vector3(0, -0.225, 0), Vector3(r.size.x, 0.15, r.size.y), mat(Color(0.3, 0.31, 0.32) if lieu == "bunker" else Color(0.2, 0.16, 0.13)), false)
 
 
 func _murs(n: int) -> void:
 	var mur := mat(Color(0.86, 0.84, 0.8) if n >= 0 else Color(0.5, 0.49, 0.48))      # (la couleur est dans la texture : le lambris, le papier peint)
 	var battant := mat(Color(0.28, 0.17, 0.1))
+	if lieu == "bunker":
+		mur = mat(Color(0.62, 0.63, 0.62))
+		battant = mat(Color(0.3, 0.33, 0.3))
 	var haut: float = R.HAUTEUR - PORTE_HAUT
 	var y := y_de(n)
 	var p: Array = plans[n]
@@ -827,7 +1049,7 @@ func _murs(n: int) -> void:
 				for k in nz:
 					vues[Vector2i(x + i, z + k)] = true
 			_porte(Vector3(x + nx * 0.5, y + PORTE_HAUT * 0.5, z + nz * 0.5), Vector3(0.2 if debout else float(nx), PORTE_HAUT, float(nz) if debout else 0.2), battant, n)
-	if cage.size.x == 0:
+	if cage.size.x == 0 or lieu == "bunker":
 		return
 	# dans la cage : une cloison entre les deux volées ; à l'étage, un garde-corps au bord du vide ; au sous-sol, le dessous des marches est clos
 	var cx := float(cage.position.x)
@@ -946,6 +1168,130 @@ func _dehors() -> void:
 	add_child(lune)
 
 
+# les passerelles et leurs plates-formes : du caillebotis, qu'on voit d'en dessous
+func _caillebotis(n: int) -> void:
+	var y := y_de(n)
+	var grille_ := Boites.new()
+	for z in profondeur:
+		var x := 0
+		while x < largeur:
+			var k := 0
+			while x + k < largeur and plans[n][z][x + k] == "g":
+				k += 1
+			if k > 0:
+				var milieu := Vector3(x + k * 0.5, y - 0.04, z + 0.5)
+				grille_.ajouter(milieu, Vector3(k, 0.08, 1.0), Color(0.5, 0.52, 0.5))
+				var forme := CollisionShape3D.new()
+				var b := BoxShape3D.new()
+				b.size = Vector3(k, 0.08, 1.0)
+				forme.shape = b
+				forme.position = milieu
+				_decor.add_child(forme)
+				# (une poutrelle dessous, tous les deux mètres)
+				if z % 2 == 0:
+					_matiere = "metal"
+					_boite(_decor, milieu + Vector3(0, -0.14, 0), Vector3(k, 0.2, 0.12), mat(Color(0.2, 0.21, 0.22)), false)
+			x += k + 1
+	if not grille_.vide():
+		add_child(grille_.noeud("grille"))
+
+
+# les garde-corps : partout où le sol donne sur le vide ou sur le flanc d'une volée, sauf là où l'on s'engage dans l'escalier
+func _garde_corps(n: int) -> void:
+	var y := y_de(n)
+	var fer := mat(Color(0.75, 0.6, 0.1))
+	_matiere = "metal"
+	for z in profondeur:
+		for x in largeur:
+			if not plans[n][z][x] in [".", "g"]:
+				continue
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var voisin := lettre(x + d.x, z + d.y, n)
+				if voisin != "v" and voisin != "e":
+					continue
+				var libre := false                 # l'entrée d'une volée : en haut de celle qui descend, en bas de celle qui monte
+				for e in escaliers:
+					if not e.rect.has_point(Vector2(x + d.x + 0.5, z + d.y + 0.5)) or d.y != 0:
+						continue
+					if voisin == "v" and e.de == n - 1 and signf(e.xb - e.xh) == float(d.x):      # (on y entre par le haut, en allant vers le bas)
+						libre = true
+					if voisin == "e" and e.de == n and signf(e.xh - e.xb) == float(d.x):          # (et par le bas, en allant vers le haut)
+						libre = true
+				if libre:
+					continue
+				var bord := Vector3(x + 0.5 + d.x * 0.47, y, z + 0.5 + d.y * 0.47)
+				var long := Vector3(0.05, 0.05, 1.0) if d.x != 0 else Vector3(1.0, 0.05, 0.05)
+				_boite(_decor, bord + Vector3(0, 1.0, 0), long, fer, false)
+				_boite(_decor, bord + Vector3(0, 0.55, 0), long, fer, false)
+				_boite(_decor, bord + Vector3(0, 0.5, 0) + (Vector3(0, 0, 0.47) if d.x != 0 else Vector3(0.47, 0, 0)), Vector3(0.05, 1.0, 0.05), fer, false)
+				var forme := CollisionShape3D.new()
+				var b := BoxShape3D.new()
+				b.size = Vector3(0.06, 1.05, 1.0) if d.x != 0 else Vector3(1.0, 1.05, 0.06)
+				forme.shape = b
+				forme.position = bord + Vector3(0, 0.525, 0)
+				_decor.add_child(forme)
+
+
+# le bunker, vu de la cour : un blockhaus de béton à demi enterré, sa porte blindée, des bandes de danger, une antenne, des barbelés
+func _dehors_bunker() -> void:
+	var l := float(largeur)
+	var p := float(profondeur)
+	var haut: float = R.HAUTEUR + 0.3
+	var beton := Boites.new()
+	var deco := Boites.new()
+	var gris := Color(0.5, 0.5, 0.48)
+	var p0 := porte_x - 1.0
+	var p1 := porte_x + 1.0
+	beton.ajouter(Vector3(p0 * 0.5, haut * 0.5, p + 0.06), Vector3(p0, haut, 0.12), gris)
+	beton.ajouter(Vector3((p1 + l) * 0.5, haut * 0.5, p + 0.06), Vector3(l - p1, haut, 0.12), gris)
+	beton.ajouter(Vector3(porte_x, (PORTE_HAUT + haut) * 0.5, p + 0.06), Vector3(2.0, haut - PORTE_HAUT, 0.12), gris)
+	beton.ajouter(Vector3(l * 0.5, haut + 0.3, p - 0.4), Vector3(l + 1.0, 0.6, 2.0), gris.darkened(0.15))               # l'avancée du toit
+	for cote: float in [-1.0, 1.0]:                # les contreforts de la porte, et leurs bandes jaunes et noires
+		beton.ajouter(Vector3(porte_x + cote * 1.5, haut * 0.5, p + 0.5), Vector3(0.8, haut, 1.0), gris.darkened(0.1), Basis(Vector3.BACK, cote * -0.08))
+		for k in 5:
+			deco.ajouter(Vector3(porte_x + cote * 1.06, 0.3 + k * 0.45, p + 0.14), Vector3(0.14, 0.2, 0.04), Color(0.9, 0.75, 0.1) if k % 2 == 0 else Color(0.06, 0.06, 0.06), Basis(Vector3.BACK, 0.6))
+	for k in 9:                                    # au-dessus de la porte
+		deco.ajouter(Vector3(porte_x - 1.0 + k * 0.25, PORTE_HAUT + 0.2, p + 0.14), Vector3(0.14, 0.26, 0.04), Color(0.9, 0.75, 0.1) if k % 2 == 0 else Color(0.06, 0.06, 0.06), Basis(Vector3.BACK, 0.6))
+	# des panneaux : le trèfle, en jaune
+	for px: float in [porte_x - 4.0, porte_x + 4.0]:
+		if px > 1.5 and px < l - 1.5:
+			deco.ajouter(Vector3(px, 1.7, p + 0.14), Vector3(0.7, 0.7, 0.04), Color(0.9, 0.78, 0.1))
+			deco.ajouter(Vector3(px, 1.7, p + 0.17), Vector3(0.16, 0.16, 0.04), Color(0.05, 0.05, 0.05))
+			for a in 3:
+				deco.ajouter(Vector3(px, 1.7, p + 0.17) + Vector3(cos(a * TAU / 3.0 + PI * 0.5), sin(a * TAU / 3.0 + PI * 0.5), 0) * 0.2, Vector3(0.2, 0.16, 0.04), Color(0.05, 0.05, 0.05), Basis(Vector3.BACK, a * TAU / 3.0))
+	# l'antenne, sur le toit, et son feu rouge
+	var ax := l * 0.75
+	for k in 6:
+		deco.ajouter(Vector3(ax, haut + 0.6 + k * 1.2, p - 3.0), Vector3(0.1, 1.2, 0.1), Color(0.2, 0.2, 0.22))
+		deco.ajouter(Vector3(ax, haut + 1.2 + k * 1.2, p - 3.0), Vector3(0.9 - k * 0.12, 0.05, 0.05), Color(0.2, 0.2, 0.22))
+	_boite(self, Vector3(ax, haut + 7.9, p - 3.0), Vector3(0.2, 0.2, 0.2), mat(Color(1.0, 0.1, 0.05), 3.0), false)
+	# les barbelés : des poteaux penchés, trois fils
+	var fer := Color(0.12, 0.12, 0.13)
+	var fond := p + float(COUR) - 0.75
+	var bx := 1.0
+	while bx < l - 0.9:
+		deco.ajouter(Vector3(bx, 1.4, fond), Vector3(0.1, 2.8, 0.1), fer)
+		deco.ajouter(Vector3(bx, 2.9, fond - 0.2), Vector3(0.08, 0.6, 0.08), fer, Basis(Vector3.RIGHT, -0.7))
+		bx += 2.5
+	for k in 3:
+		deco.ajouter(Vector3(l * 0.5, 1.0 + k * 0.8, fond), Vector3(l - 2.0, 0.03, 0.03), fer)
+	# des fûts abandonnés, des blocs de béton
+	var h := RandomNumberGenerator.new()
+	h.seed = largeur * 77 + profondeur
+	for k in 7:
+		var fx := h.randf_range(1.6, 4.8) if k % 2 == 0 else h.randf_range(l - 4.8, l - 1.6)
+		if absf(fx - porte_x) < 4.4:
+			continue
+		var fz := p + 2.0 + h.randf_range(0.0, 9.0)
+		if k < 4:
+			deco.ajouter(Vector3(fx, 0.45, fz), Vector3(0.6, 0.9, 0.6), Color(0.45, 0.4, 0.12), Basis(Vector3.UP, h.randf() * TAU))
+			deco.ajouter(Vector3(fx, 0.6, fz), Vector3(0.63, 0.08, 0.63), Color(0.1, 0.1, 0.1), Basis(Vector3.UP, h.randf() * TAU))
+		else:
+			beton.ajouter(Vector3(fx, 0.4, fz), Vector3(1.4, 0.8, 0.6), gris.darkened(0.2), Basis(Vector3.UP, h.randf_range(-0.5, 0.5)))
+	add_child(beton.noeud("beton"))
+	add_child(deco.noeud("grain"))
+
+
 # les escaliers : une pente solide (un meuble s'y traîne, et y glisse), et des marches par-dessus pour l'œil
 func _marches() -> void:
 	for e in escaliers:
@@ -964,7 +1310,7 @@ func _marches() -> void:
 		corps.rotation.z = angle
 		add_child(corps)
 		_boite(corps, Vector3.ZERO, Vector3(long.length(), 0.3, 2.0), mat(Color(0.2, 0.15, 0.1)))
-		var bois := mat(Color(0.42, 0.3, 0.19))
+		var bois := mat(Color(0.42, 0.3, 0.19) if lieu != "bunker" else Color(0.32, 0.34, 0.36))
 		for i in 12:
 			var f := (i + 0.5) / 12.0
 			_boite(self, Vector3(lerpf(e.xb, e.xh, f), yb + PAS * f - 0.15, z), Vector3(0.5, 0.3, 1.96), bois, false)
@@ -987,6 +1333,15 @@ func _lampes() -> void:
 	for piece in pieces:
 		var r: Rect2i = piece.rect
 		var n := maxi(1, int(ceil(maxi(r.size.x, r.size.y) / 11.0)))
+		if piece.type == "passerelle":
+			continue
+		if lieu == "bunker" and piece.type == "palier":       # la cage : un néon sur le palier ouest, un feu rouge sur la coursive
+			_lampe(Vector2(r.position.x + 1.0, r.position.y + 3.0), piece.niveau)
+			if piece.niveau % 2 != 0:
+				_lampe(Vector2(r.position.x + 5.0, r.position.y + 3.0), piece.niveau)
+				lampes[lampes.size() - 1].genre = 3
+				_lampe(Vector2(r.end.x - 1.0, r.position.y + 3.0), piece.niveau)
+			continue
 		if piece.type == "palier":             # une lampe à chaque palier
 			_lampe(Vector2(r.position.x + 1.0, r.position.y + 2.0), piece.niveau)
 			_lampe(Vector2(r.position.x + 5.0, r.position.y + (1.0 if piece.niveau < 0 else 3.0)), piece.niveau)      # (pas au-dessus des marches : on s'y cognerait)
@@ -1000,6 +1355,17 @@ func _lampes() -> void:
 			if LUEURS.has(piece.type):       # une pièce bonus a sa lumière à elle
 				lampes[lampes.size() - 1].lumiere.light_color = LUEURS[piece.type][0]
 				lampes[lampes.size() - 1].lumiere.light_energy = LUEURS[piece.type][1]
+			elif lieu == "bunker":
+				var lampe: Dictionary = lampes[lampes.size() - 1]
+				if piece.type in ["dechets", "reacteur"]:      # ce qui brûle luit en vert
+					lampe.lumiere.light_color = Color(0.45, 1.0, 0.35)
+					lampe.lumiere.light_energy = 1.3
+					lampe.genre = 1
+				elif piece.type == "hall":       # le hall : sa lampe est tout en haut, et porte loin
+					lampe.lumiere.position.y = y_de(piece.niveau + 1) + R.HAUTEUR - 0.6
+					lampe.ampoule.position.y = lampe.lumiere.position.y + 0.3
+					lampe.lumiere.omni_range = 12.0
+					lampe.lumiere.light_energy = 2.2
 			elif piece.niveau < 0:           # au sous-sol, on y voit moins
 				lampes[lampes.size() - 1].lumiere.light_energy = 1.1
 
@@ -1021,7 +1387,16 @@ func _lampe(p: Vector2, n: int) -> void:
 	a.material_override = mat(Color(1.0, 0.85, 0.55), 2.5)
 	a.layers = couche(n)
 	add_child(a)
-	lampes.append({"lumiere": l, "ampoule": a, "niveau": n, "force": 0.0, "phase": randf() * TAU})
+	var genre := 0                     # 0 : une lampe qui vacille à peine ; au bunker, 1 : un néon ; 2 : un néon qui grésille ; 3 : un feu rouge qui tourne
+	if lieu == "bunker":
+		var tire := (int(p.x * 7.0 + p.y * 13.0) + n * 5) % 10
+		genre = 2 if tire < 3 else 1
+		l.light_color = Color(0.8, 0.95, 1.0)
+		var tube := BoxMesh.new()
+		tube.size = Vector3(1.1, 0.07, 0.14)
+		a.mesh = tube
+		a.material_override = mat(Color(0.85, 0.97, 1.0), 2.5)
+	lampes.append({"lumiere": l, "ampoule": a, "niveau": n, "force": 0.0, "phase": randf() * TAU, "genre": genre})
 
 
 # le camion de déménagement : une grande caisse ouverte vers la porte du manoir, où l'on monte par une rampe ; on charge dedans.
@@ -1113,7 +1488,7 @@ func _grille(n: int) -> void:
 		for c in largeur:
 			var mur := false
 			if ligne < profondeur:
-				mur = not plans[n][ligne][c] in [".", "D", "P"]
+				mur = not plans[n][ligne][c] in [".", "D", "P", "g"]
 			else:
 				mur = c == 0 or c == largeur - 1 or ligne == profondeur + COUR - 1 \
 					or camion.grow(0.3).intersects(Rect2(c, ligne, 1.0, 1.0))
@@ -1124,18 +1499,28 @@ func _grille(n: int) -> void:
 
 # la tanière : le milieu de la pièce la plus loin de l'entrée, par le chemin
 func _tanier() -> void:
-	var loin := -1
-	for piece in pieces:
-		if piece.type == "couloir" or piece.type == "entree" or piece.type == "palier":
-			continue
-		var r: Rect2i = piece.rect
-		var milieu := Vector3(r.position.x + r.size.x * 0.5, y_de(piece.niveau), r.position.y + r.size.y * 0.5)
-		var n := chemin(seuil, milieu).size()
-		if n > loin:
-			loin = n
-			_antre = r
-			_antre_n = piece.niveau
-			taniere = centre(case_de(milieu), piece.niveau)
+	tanieres = []
+	_antres = []
+	for etage in ([-1, -2, -3] if lieu == "bunker" else [99]):      # au bunker : une par niveau enterré, la plus loin de l'escalier
+		var loin := -1
+		var ou := Vector3.ZERO
+		var antre := [Rect2i(), 0]
+		for piece in pieces:
+			if piece.type in ["couloir", "entree", "palier", "passerelle"] or (etage != 99 and piece.niveau != etage):
+				continue
+			var r: Rect2i = piece.rect
+			var milieu := Vector3(r.position.x + r.size.x * 0.5, y_de(piece.niveau), r.position.y + r.size.y * 0.5)
+			var n := chemin(seuil, milieu).size()
+			if n > loin:
+				loin = n
+				antre = [r, piece.niveau]
+				ou = centre(case_de(milieu), piece.niveau)
+		if loin >= 0:
+			tanieres.append(ou)
+			_antres.append(antre)
+	_antre = _antres[0][0]
+	_antre_n = _antres[0][1]
+	taniere = tanieres[0]
 
 
 # la maison meublée : là où pèsent des meubles, le fantôme passe mal. Ses chemins préfèrent les cases dégagées (il butera quand même
@@ -1154,14 +1539,17 @@ func encombrer(lourds: Array, tiennent: Array = [], lourds_n: Array = [], tienne
 			for x in range(int(floor(large.position.x)), int(floor(large.end.x)) + 1):
 				var c := Vector2i(x, z)
 				if g.is_in_boundsv(c) and not g.is_point_solid(c) and large.has_point(Vector2(x + 0.5, z + 0.5)):
-					if n == _antre_n:
-						prises[c] = true
+					prises[Vector3i(c.x, c.y, n)] = true
 					g.set_point_weight_scale(c, 8.0)
-	var milieu := Vector2(_antre.position.x + _antre.size.x * 0.5, _antre.position.y + _antre.size.y * 0.5)
-	var mieux := 1e9
-	for z in range(_antre.position.y, _antre.end.y):
-		for x in range(_antre.position.x, _antre.end.x):
-			var d := milieu.distance_to(Vector2(x + 0.5, z + 0.5))
-			if not prises.has(Vector2i(x, z)) and d < mieux:
-				mieux = d
-				taniere = Vector3(x + 0.5, y_de(_antre_n), z + 0.5)
+	for k in _antres.size():               # chaque tanière : une case libre de sa pièce
+		var antre: Rect2i = _antres[k][0]
+		var niv: int = _antres[k][1]
+		var milieu := Vector2(antre.position.x + antre.size.x * 0.5, antre.position.y + antre.size.y * 0.5)
+		var mieux := 1e9
+		for z in range(antre.position.y, antre.end.y):
+			for x in range(antre.position.x, antre.end.x):
+				var d := milieu.distance_to(Vector2(x + 0.5, z + 0.5))
+				if not prises.has(Vector3i(x, z, niv)) and d < mieux:
+					mieux = d
+					tanieres[k] = Vector3(x + 0.5, y_de(niv), z + 0.5)
+	taniere = tanieres[0]

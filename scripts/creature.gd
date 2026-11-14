@@ -17,6 +17,8 @@ enum { DORT, RODE, ENQUETE, CHASSE, ALERTE }
 var principal
 var maison
 var mode := DORT
+var taniere := Vector3.ZERO      # là où elle dort, et où elle rentre
+var sorte := 0                    # 0 : le fantôme du manoir ; 1 : un irradié du bunker (les yeux verts)
 var proie := -1
 var bute := false                 # il cogne contre un meuble qui lui barre le passage
 var route := PackedVector3Array()
@@ -67,7 +69,9 @@ var _pas_avant := 0.0
 func preparer(p) -> void:
 	principal = p
 	maison = p.maison
-	position = maison.taniere
+	if taniere == Vector3.ZERO:
+		taniere = maison.taniere
+	position = taniere
 	cible_pos = position
 	_avant_pos = position
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -159,9 +163,9 @@ func _faire_corps() -> void:
 	_boite(machoire, Vector3(0, -0.05, -0.1), Vector3(0.18, 0.08, 0.2), chair)
 	for k in 4:                         # les dents
 		_boite(machoire, Vector3(-0.06 + 0.04 * k, 0.0, -0.195), Vector3(0.018, 0.05, 0.015), os)
-	_yeux_mat = _mat(Color(1.0, 0.92, 0.6))
+	_yeux_mat = _mat(Color(1.0, 0.92, 0.6) if sorte == 0 else Color(0.6, 1.0, 0.5))
 	_yeux_mat.emission_enabled = true
-	_yeux_mat.emission = Color(1.0, 0.9, 0.55)
+	_yeux_mat.emission = Color(1.0, 0.9, 0.55) if sorte == 0 else Color(0.4, 1.0, 0.3)
 	_yeux_mat.emission_energy_multiplier = 5.0
 	for x in [-0.065, 0.065]:
 		var oeil := MeshInstance3D.new()
@@ -371,7 +375,7 @@ func rentrer() -> void:
 	_roder(3.0)
 	_repue = R.CHOSE_REPUE
 	_butees = 0
-	_aller(maison.taniere)
+	_aller(taniere)
 
 
 # --- sa carte, et ses chemins ---
@@ -605,7 +609,7 @@ func _chercher() -> void:
 		_dernier = principal.joueurs[mieux].global_position
 		route = PackedVector3Array()
 		_i = 0
-		principal.reperer(mieux, par_la_torche)
+		principal.reperer(mieux, par_la_torche, global_position)
 
 
 # --- chez tout le monde : le voir bouger ---

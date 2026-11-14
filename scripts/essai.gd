@@ -842,6 +842,7 @@ func _seul() -> void:
 	await _bruits()
 	await _argent()
 	await _etages()
+	await _bunker()
 	jeu.retour_menu()
 	verif(jeu.etat == jeu.MENU and jeu.monde == null and jeu.joueurs.is_empty(), "et l'on revient au menu")
 
@@ -1236,6 +1237,106 @@ func _etages() -> void:
 	jeu.tuer(1)
 	await _attendre(0.2)
 	jeu.etages_voulus = false
+
+
+# le second lieu : le bunker
+func _bunker() -> void:
+	print("16. Le bunker")
+	jeu.graine = 1
+	jeu.lieu = "bunker"
+	jeu.lancer()
+	await _attendre(0.6)
+	jeu.repit = 1e9
+	jeu.chat.reste = 1e9
+	var m = jeu.maison
+	var moi = jeu.moi
+	var H: float = m.PAS
+	var types := {}
+	for p in m.pieces:
+		types[p.type] = true
+	verif(m.lieu == "bunker" and m.niveaux == [-3, -2, -1, 0] and m.escaliers.size() == 3 and types.has("hall") and types.has("passerelle") and types.has("reacteur") and types.has("dechets") and types.has("controle"),
+		"un bunker : une entrée en surface, trois niveaux sous terre, trois volées d'escalier, un hall des machines et sa passerelle, un réacteur")
+	var joints := true
+	var cases := 0
+	var grilles := 0
+	for n in m.niveaux:
+		for z in m.profondeur:
+			for x in m.largeur:
+				if m.plans[n][z][x] in [".", "D", "P", "g"]:
+					cases += 1
+					grilles += 1 if m.plans[n][z][x] == "g" else 0
+					joints = joints and not m.chemin(m.seuil, m.centre(Vector2i(x, z), n)).is_empty()
+	verif(joints and grilles >= 10, "ses %d cases de sol se rejoignent toutes depuis l'entrée, dont %d de caillebotis" % [cases, grilles])
+	var etages := {}
+	for c in jeu.choses:
+		etages[m.niveau_de(c.global_position.y)] = true
+	verif(jeu.choses.size() == 3 and etages.size() == 3 and not etages.has(0), "trois créatures y dorment, une par niveau enterré")
+	var places := {}
+	for o in jeu.objets.values():
+		places[o.id] = o.global_position
+	await _attendre(1.5)
+	var bouge := 0.0
+	for o in jeu.objets.values():
+		bouge = maxf(bouge, o.global_position.distance_to(places[o.id]))
+	jeu._niveler()
+	verif(jeu.objets.size() >= 150 and bouge < 0.2 and jeu._mailles() < 800, "%d objets, posés et qui le restent (le plus remuant a bougé de %d cm) ; %d maillages à l'écran" % [jeu.objets.size(), int(bouge * 100), jeu._mailles()])
+	var fous := 0
+	var rouges := 0
+	for l in m.lampes:
+		fous += 1 if l.genre == 2 else 0
+		rouges += 1 if l.genre == 3 else 0
+	verif(fous >= 5 and rouges >= 1 and fous < m.lampes.size() / 2, "%d néons, dont %d qui grésillent, et des feux rouges dans la cage d'escalier" % [m.lampes.size(), fous])
+	# descendre, pour de bon : deux volées, qui alternent
+	var v0: Dictionary = m.escalier_entre(0, -1)
+	moi.global_position = v0.entree + Vector3(-0.5, 0.05, 0.0)
+	moi.velocity = Vector3.ZERO
+	await _images(10)
+	var arrive: bool = await _avancer(moi, 1.0, v0.sortie.x)
+	var premier: float = moi.global_position.y
+	var v1: Dictionary = m.escalier_entre(-1, -2)
+	moi.global_position = v1.entree + Vector3(0.5, 0.05, 0.0)
+	moi.velocity = Vector3.ZERO
+	await _images(10)
+	var arrive2: bool = await _avancer(moi, -1.0, v1.sortie.x)
+	verif(arrive and arrive2 and absf(premier + H) < 0.1 and absf(moi.global_position.y + 2.0 * H) < 0.1, "le porteur descend deux volées à pied : au niveau -1 (%.1f m), puis au niveau -2 (%.1f m)" % [premier, moi.global_position.y])
+	# la passerelle : on y marche, et son garde-corps retient
+	var hall: Rect2 = m.puits[1]
+	var milieu := Vector3(hall.position.x + floor(hall.size.x / 2.0), -H + 0.05, hall.get_center().y)
+	moi.global_position = milieu
+	moi.velocity = Vector3.ZERO
+	await _images(20)
+	var dessus: bool = absf(moi.global_position.y + H) < 0.1 and moi.is_on_floor()
+	await _avancer(moi, -1.0, hall.position.x + 0.5, 1.5)
+	verif(dessus and absf(moi.global_position.y + H) < 0.1 and moi.global_position.x > milieu.x - 1.3, "sur la passerelle, au-dessus du hall : le caillebotis porte, et le garde-corps retient (il n'est pas tombé)")
+	# les radiations
+	var depot: Rect2 = m.radios[0].rect
+	var au_depot := Vector3(depot.get_center().x, m.y_de(m.radios[0].niveau) + 0.05, depot.get_center().y)
+	_pilote(moi)
+	moi.global_position = au_depot
+	await _attendre(2.0)
+	var prise: float = jeu.ma_dose
+	verif(prise > 0.08 and prise < 0.3 and is_equal_approx(m.radiation(au_depot), 1.0) and jeu.ui._dose.visible and jeu.ui._dose.text.contains("zone radioactive"),
+		"dans le dépôt de déchets, la dose monte (%d %% en deux secondes) et l'écran le dit" % int(prise * 100))
+	moi.global_position = Vector3(3.0, 0.05, m.cage.position.y + 3.0)
+	await _attendre(1.5)
+	verif(jeu.ma_dose < prise + 0.01 and m.radiation(moi.global_position) == 0.0, "sorti de la zone, elle ne monte plus")
+	# une créature, d'un niveau à l'autre du bunker
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
+	var chose = jeu.chose
+	chose.reveiller()
+	chose._repue = 0.0
+	chose.global_position = Vector3(m.cage.position.x - 5.0, -H, m.cage.position.y + 3.0)
+	var au_fond: Vector3 = m.centre(Vector2i(6, m.cage.position.y + 3), -3)
+	chose.entendre(au_fond, 300.0)
+	var suivi: Array = await _suivre(au_fond, 80.0)
+	verif(suivi[0] and suivi[1], "un bruit tout au fond : la créature du niveau -1 descend les deux volées et traverse la coursive (en %.0f s)" % suivi[2])
+	# trop de radiations : on en meurt
+	moi.global_position = au_depot
+	jeu.doses[1] = 0.97
+	await _attendre(1.5)
+	verif(not moi.vivant and jeu.etat == jeu.FIN, "la dose pleine : le porteur meurt irradié")
+	jeu.lieu = "manoir"
+	jeu.graine = -7
 
 
 # --- le réseau : l'hôte ---

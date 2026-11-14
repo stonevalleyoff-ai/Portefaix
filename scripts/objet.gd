@@ -60,24 +60,14 @@ func preparer(p, i: int, t: String) -> void:
 	add_child(forme)
 	# un seul maillage pour tout le meuble (ce qui luit, une flamme, un écran, a le sien)
 	var fondu := Boites.new()
+	var luisant := Boites.new()
 	for piece in _pieces(d.couleur):
-		if piece.size() <= 7:
+		if piece.size() <= 7 or piece[7] < 1.0:      # (une lueur faible, de l'or : comme le reste)
 			fondu.ajouter(taille * Vector3(piece[0], piece[1], piece[2]), taille * Vector3(piece[3], piece[4], piece[5]), piece[6])
-			continue
-		var mesh := MeshInstance3D.new()
-		var m := BoxMesh.new()
-		m.size = taille * Vector3(piece[3], piece[4], piece[5])
-		mesh.mesh = m
-		mesh.position = taille * Vector3(piece[0], piece[1], piece[2])
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = piece[6]
-		mat.roughness = 0.85
-		if piece.size() > 7:             # (l'or, une flamme, un écran : ça luit)
-			mat.emission_enabled = true
-			mat.emission = piece[6]
-			mat.emission_energy_multiplier = piece[7]
-		mesh.material_override = mat
-		add_child(mesh)
+		else:
+			luisant.ajouter(taille * Vector3(piece[0], piece[1], piece[2]), taille * Vector3(piece[3], piece[4], piece[5]), piece[6])
+	if not luisant.vide():
+		add_child(luisant.noeud("lueur"))
 	if not fondu.vide():
 		add_child(fondu.noeud())
 	if not principal.serveur:
@@ -114,6 +104,37 @@ func _pieces(c: Color) -> Array:
 	var or_ := Color(0.95, 0.75, 0.2)
 	var chrome := Color(0.7, 0.72, 0.75)
 	match type:
+		# --- le bunker ---
+		"lit_camp":
+			return [[0, 0.1, 0, 1, 0.24, 1, c], [0, 0.3, -0.4, 0.8, 0.2, 0.16, clair], [0, 0.24, 0.1, 0.96, 0.08, 0.6, sombre]] + pieds
+		"casier":
+			return [[0, 0, 0, 1, 1, 1, c], [0, 0, 0.5, 0.9, 0.94, 0.04, sombre], [0, 0.3, 0.52, 0.6, 0.02, 0.04, noir], [0, 0.36, 0.52, 0.6, 0.02, 0.04, noir], [0.32, -0.05, 0.53, 0.06, 0.08, 0.05, chrome]]
+		"pupitre":
+			return [[0, -0.2, 0, 1, 0.6, 1, c], [0, 0.2, -0.25, 1, 0.6, 0.5, c], [0, 0.14, 0.2, 0.96, 0.04, 0.56, sombre], [-0.3, 0.3, 0.01, 0.24, 0.3, 0.03, Color(0.2, 1.0, 0.4), 1.5],
+				[0.05, 0.3, 0.01, 0.24, 0.3, 0.03, Color(0.2, 0.7, 1.0), 1.2], [0.36, 0.17, 0.2, 0.05, 0.03, 0.08, Color(1.0, 0.2, 0.1), 2.0], [0.2, 0.17, 0.3, 0.05, 0.03, 0.08, Color(1.0, 0.8, 0.1), 1.5]]
+		"radio":
+			return [[0, 0, 0, 1, 1, 1, c], [-0.2, 0, 0.5, 0.4, 0.6, 0.06, noir], [0.25, 0.15, 0.5, 0.3, 0.2, 0.06, Color(1.0, 0.8, 0.3), 1.0], [0.4, 0.9, -0.3, 0.04, 0.9, 0.06, chrome]]
+		"radar":
+			return [[0, 0, -0.05, 1, 1, 0.9, c], [0, 0, 0.42, 0.8, 0.8, 0.06, Color(0.05, 0.3, 0.1), 1.2], [0, 0, 0.46, 0.04, 0.7, 0.03, Color(0.3, 1.0, 0.4), 2.0], [0, 0, 0.46, 0.7, 0.04, 0.03, Color(0.3, 1.0, 0.4), 2.0]]
+		"masque_gaz":
+			return [[0, 0, 0, 1, 1, 0.8, c], [-0.24, 0.1, 0.42, 0.3, 0.3, 0.1, Color(0.5, 0.6, 0.6)], [0.24, 0.1, 0.42, 0.3, 0.3, 0.1, Color(0.5, 0.6, 0.6)], [0, -0.35, 0.5, 0.4, 0.4, 0.3, sombre]]
+		"conserves":
+			return [[0, -0.2, 0, 1, 0.6, 1, c], [-0.28, 0.25, 0, 0.3, 0.5, 0.6, chrome], [0.05, 0.25, 0, 0.3, 0.5, 0.6, Color(0.7, 0.2, 0.15)], [0.36, 0.25, 0, 0.26, 0.5, 0.6, chrome]]
+		"caisse_munitions":
+			return [[0, 0, 0, 1, 1, 1, c], [0, 0.5, 0, 1.02, 0.08, 1.02, sombre], [0, 0, 0.5, 0.5, 0.3, 0.04, Color(0.85, 0.8, 0.5)], [-0.52, 0.1, 0, 0.04, 0.2, 0.4, noir], [0.52, 0.1, 0, 0.04, 0.2, 0.4, noir]]
+		"fut", "fut_radioactif":
+			var dechets := type == "fut_radioactif"
+			return [[0, 0, 0, 0.92, 1, 0.92, c], [0, 0.3, 0, 1, 0.06, 1, sombre], [0, -0.3, 0, 1, 0.06, 1, sombre], [0, 0.5, 0, 0.3, 0.03, 0.3, noir]] \
+				+ ([[0, 0, 0.47, 0.5, 0.3, 0.03, noir], [0, -0.48, 0.2, 0.7, 0.03, 0.5, Color(0.3, 1.0, 0.2), 2.0]] if dechets else [])
+		"generateur":
+			return [[0, 0.05, 0, 0.9, 0.7, 0.9, c], [0, -0.42, 0, 1, 0.16, 1, noir], [-0.3, 0.46, 0, 0.3, 0.14, 0.5, sombre], [0.3, 0.6, 0.2, 0.1, 0.5, 0.1, noir], [0, 0.1, 0.46, 0.5, 0.3, 0.04, noir],
+				[0.3, 0.2, 0.47, 0.08, 0.08, 0.04, Color(0.2, 1.0, 0.3), 2.0], [-0.46, 0.1, 0, 0.06, 0.4, 0.6, chrome]]
+		"pharmacie":
+			return [[0, 0, 0, 1, 1, 1, c], [0, 0, 0.5, 0.5, 0.16, 0.1, Color(0.85, 0.1, 0.1)], [0, 0, 0.5, 0.16, 0.5, 0.1, Color(0.85, 0.1, 0.1)]]
+		"barre_uranium":
+			return [[0, 0, 0, 0.7, 0.86, 0.7, c, 2.2], [0, 0.46, 0, 1, 0.08, 1, chrome], [0, -0.46, 0, 1, 0.08, 1, chrome]]
+		"caisse_plomb":
+			return [[0, 0, 0, 1, 1, 1, c], [0, 0.5, 0, 1.04, 0.1, 1.04, sombre], [0, 0, 0.5, 0.4, 0.4, 0.04, Color(0.9, 0.78, 0.1)], [0, 0, 0.52, 0.12, 0.12, 0.04, noir]]
 		# --- les trésors des pièces bonus ---
 		"bougie":
 			return [[0, -0.08, 0, 1, 0.84, 1, c], [0, 0.42, 0, 0.4, 0.16, 0.4, Color(1.0, 0.6, 0.15), 3.0]]
