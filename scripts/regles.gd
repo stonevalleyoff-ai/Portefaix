@@ -86,7 +86,12 @@ const CHOSE_PRES := 1.5       # … et il sent ce qui est tout contre lui, même
 const CHOSE_ELAN := 7.0       # il prend sa vitesse peu à peu (m/s²)
 const CHOSE_CARTE := 0.35     # tous les combien il regarde où sont les meubles, et refait son chemin autour
 const CHOSE_BLOCAGE := 0.6    # s'il piétine tout ce temps, c'est qu'un meuble lui barre le passage : il bute
-const CHOSE_RAGE := 2          # enfermé (il a renoncé tant de fois sans avoir pu s'éloigner), il renverse tout ce qui l'entoure
+# Bloqué (un meuble lui barre le passage, on l'a enfermé), le fantôme laisse du temps : un quart de minute. Puis il s'énerve, et lâche
+# une onde de choc qui pousse tout autour de lui, meubles et porteurs, et donne une peur bleue à ceux qu'elle atteint.
+const CHOSE_PATIENCE := 15.0   # ce qu'il supporte d'être bloqué, en secondes
+const CHOSE_PREVIENT := 10.0   # à partir de là, on entend qu'il s'énerve
+const ONDE_RAYON := 6.0        # jusqu'où porte l'onde
+const ONDE_RECUL := 9.0        # la vitesse qu'elle donne à un porteur, tout près
 const CHOSE_PASSE := 2.5       # et, le temps de sortir de là, plus aucun meuble ne l'arrête
 const CHOSE_BUTEES := 4       # à force de buter sans trouver d'autre passage, il renonce
 const CHOSE_ALERTE := 1.8     # quand elle voit un porteur, elle crie tout ce temps avant de s'élancer

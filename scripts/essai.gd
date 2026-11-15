@@ -993,30 +993,48 @@ func _failles() -> void:
 	_mettre(lit, Vector3(8.0, 0.4, m.profondeur + 12.0))
 	_pilote(moi)
 	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
-	# le fantôme, coincé : il renverse tout
+	# le fantôme, bloqué : quinze secondes de patience, puis une onde de choc
 	chose.reveiller()
-	chose._roder(60.0)
+	chose._roder(600.0)
+	chose._repue = 600.0           # (il ne regarde ni n'écoute : on n'essaie ici que sa patience)
 	chose.global_position = Vector3(20.0, 0.0, 8.0)
 	var canape = _trouver("canape")
 	_mettre(canape, Vector3(21.3, 0.45, 8.0))
 	canape.rotation.y = PI * 0.5
+	var vase = _trouver("vase")
+	_mettre(vase, Vector3(18.6, 0.3, 8.0))
+	moi.global_position = Vector3(17.0, 0.05, 8.3)       # le porteur, à trois mètres, dans son dos
+	chose.rotation.y = -PI * 0.5
 	await _attendre(0.8)
 	var avant: Vector3 = canape.global_position
-	chose._butees = R.CHOSE_BUTEES - 1
-	chose._buter()
-	var une_fois: bool = chose._passe <= 0.0
-	chose._butees = R.CHOSE_BUTEES - 1
-	chose._buter()
-	var libre: bool = chose._passe > 0.0 and chose.collision_mask == R.COUCHE_DECOR
+	var t_bloc := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t_bloc < 4000:           # il bute, et bute encore, au même endroit
+		chose._bloque()
+		await _attendre(0.5)
+	var patient: bool = chose.colere > 3.0 and chose.colere < 6.0 and canape.global_position.distance_to(avant) < 0.1 and not moi.blesse and not chose._prevenu
+	chose.colere = R.CHOSE_PREVIENT - 0.3                  # (on n'attend pas le quart de minute)
+	chose._bloque()
+	await _attendre(0.6)
+	var previent: bool = chose._prevenu and jeu.ui._annonce.text.contains("s'énerve") and canape.global_position.distance_to(avant) < 0.1
+	chose.colere = R.CHOSE_PATIENCE - 0.3
+	chose._bloque()
+	moi.pilote = false
+	var depart: Vector3 = moi.global_position
 	await _attendre(1.0)
 	var vole: float = canape.global_position.distance_to(avant)
-	await _attendre(R.CHOSE_PASSE)
-	verif(une_fois and libre and vole > 1.0 and chose.collision_mask == (R.COUCHE_DECOR | R.COUCHE_OBJETS),
-		"le fantôme coincé : il renonce une fois ; la seconde, au même endroit, il renverse ce qui l'entoure (le canapé vole à %.1f m), passe, puis les meubles l'arrêtent de nouveau" % vole)
+	var repousse: float = moi.global_position.x - depart.x
+	verif(patient and previent, "bloqué contre un canapé, le fantôme patiente : rien ne bouge pendant %d secondes ; à %d, on l'entend s'énerver" % [int(R.CHOSE_PATIENCE), int(R.CHOSE_PREVIENT)])
+	verif(vole > 1.0 and vase.global_position.distance_to(Vector3(18.6, 0.3, 8.0)) > 0.5 and repousse < -0.3 and moi.blesse and moi.vivant and jeu.ui._trouble.visible and chose.collision_mask == R.COUCHE_DECOR,
+		"puis l'onde de choc : le canapé vole à %.1f m, le vase aussi, le porteur est repoussé de %.1f m et pris d'une peur bleue" % [vole, -repousse])
+	jeu.souffler(1, Vector3(-3.0, 0.0, 0.0))
+	await _attendre(R.CHOSE_PASSE + 0.3)
+	verif(moi.vivant and chose.collision_mask == (R.COUCHE_DECOR | R.COUCHE_OBJETS) and chose.colere == 0.0, "une seconde onde ne tue pas celui qui a déjà peur ; et le fantôme, passé, redevient sensible aux meubles")
+	_pilote(moi)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
 	# tiré dehors : il n'y reste pas
 	chose.global_position = Vector3(m.porte_x, 0.0, m.profondeur + 1.5)
 	await _attendre(0.3)
-	verif(chose.global_position.z <= m.profondeur - 1.1 and m.dedans(chose.global_position), "traîné dans la cour par un meuble, il se retrouve aussitôt derrière le seuil")
+	verif(chose.global_position.z <= m.profondeur - 1.1 and m.dedans(chose.global_position) and chose.colere < 1.0, "traîné dans la cour par un meuble, il se retrouve aussitôt derrière le seuil (et cela compte comme être bloqué)")
 	jeu.tuer(1)
 	await _attendre(0.2)
 

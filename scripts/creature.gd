@@ -46,8 +46,10 @@ var _carte: AStarGrid2D            # sa carte fine du niveau où il est : les mu
 var _cartes := {}                 # une carte par niveau
 var _durs := {}                   # par niveau, ce qui ne bouge pas : les murs, les escaliers, ce qui tient à la maison
 var _niv := 0                     # le niveau de la carte qu'il tient
-var _renonce := 0                  # combien de fois de suite il a renoncé sans avoir pu s'éloigner
-var _d_ou_il_renonce := Vector3.INF
+var colere := 0.0                  # depuis combien de temps il est bloqué au même endroit
+var _ou_bloque := Vector3.INF      # là où il l'est
+var _t_blocage := 1e9              # le temps passé depuis la dernière fois qu'il a buté
+var _prevenu := false
 var _passe := 0.0                  # tant que ça dure, plus aucun meuble ne l'arrête (il vient de tout renverser)
 var _i_marche := -1               # dans sa route, le point qui est au bout d'un escalier : il y va tout droit, par les marches
 var _etapes := false              # sa route ne mène qu'à un escalier, ou au bout de celui où il est : arrivé, il la refait
@@ -248,6 +250,7 @@ func avancer(dt: float) -> void:
 	if mode == DORT:
 		return
 	_rester_dedans()
+	_bouillir(dt)
 	if _passe > 0.0:
 		_passe -= dt
 		if _passe <= 0.0:
@@ -332,6 +335,7 @@ func avancer(dt: float) -> void:
 				_aller(_destination)
 			elif _i >= route.size() and not _atteint and mode != CHASSE:
 				_t_bute = 1.3                  # au bout d'un chemin qui ne passe pas : il cogne contre ce qui le barre
+				_bloque()
 				principal.son_a.rpc("choc", global_position + Vector3.UP, -2.0)
 	if not _veut:
 		_allure = 0.0
@@ -351,6 +355,7 @@ func avancer(dt: float) -> void:
 
 # il bute : il cogne, puis cherche un passage qui évite cette case ; à force, il renonce
 func _buter() -> void:
+	_bloque()
 	_butees += 1
 	_t_bute = 0.9
 	_allure = 0.0
@@ -359,52 +364,81 @@ func _buter() -> void:
 		_evite[_case(route[_i])] = Time.get_ticks_msec() + 6000
 	if _butees >= R.CHOSE_BUTEES:
 		_butees = 0
-		# enfermé ? S'il renonce encore au même endroit, c'est qu'on l'a coincé : il se dégage
-		if _d_ou_il_renonce.is_finite() and global_position.distance_to(_d_ou_il_renonce) < 2.5:
-			_renonce += 1
-		else:
-			_renonce = 1
-		_d_ou_il_renonce = global_position
-		if _renonce >= R.CHOSE_RAGE:
-			_degager()
-			return
 		_repue = 3.0
 		_roder(2.0)
 		return
 	_aller(_destination)
 
 
-# coincé (dans un angle, derrière un meuble, entre un meuble et une porte) : il hurle et renverse tout ce qui l'entoure. Les meubles
-# volent, et s'abîment ; ceux qui les tenaient les lâchent. Puis, le temps de sortir de là, rien ne l'arrête.
-func _degager() -> void:
-	_renonce = 0
+# il vient de buter : c'est noté. Tant qu'il bute ainsi au même endroit, sa colère monte.
+func _bloque() -> void:
+	_t_blocage = 0.0
+	if not _ou_bloque.is_finite() or global_position.distance_to(_ou_bloque) > 3.0:
+		_ou_bloque = global_position
+		colere = 0.0
+		_prevenu = false
+
+
+# sa colère : elle monte tant qu'il reste bloqué au même endroit, retombe dès qu'il s'en éloigne ou qu'il ne bute plus
+func _bouillir(dt: float) -> void:
+	_t_blocage += dt
+	if not _ou_bloque.is_finite():
+		return
+	if _t_blocage > 6.0 or global_position.distance_to(_ou_bloque) > 3.0:
+		_ou_bloque = Vector3.INF
+		colere = 0.0
+		_prevenu = false
+		return
+	colere += dt
+	if colere >= R.CHOSE_PREVIENT and not _prevenu:
+		_prevenu = true
+		principal.son_a.rpc("hurle", global_position + Vector3.UP * 2.0, 0.0)
+		principal.annonce.rpc("Bloqué, il s'énerve… Écartez-vous, ou laissez-le passer.")
+	if colere >= R.CHOSE_PATIENCE:
+		_onde()
+
+
+# l'onde de choc : tout ce qui l'entoure est soufflé (les meubles volent et s'abîment, ceux qui les tenaient les lâchent), les porteurs
+# sont repoussés et pris d'une peur bleue. Puis, le temps de sortir de là, rien ne l'arrête.
+func _onde() -> void:
+	colere = 0.0
+	_ou_bloque = Vector3.INF
+	_prevenu = false
 	_butees = 0
 	_passe = R.CHOSE_PASSE
 	collision_mask = R.COUCHE_DECOR
-	principal.son_a.rpc("hurle", global_position + Vector3.UP * 2.0, 6.0)
-	principal.annonce.rpc("Coincé, il a tout renversé pour se dégager !")
+	principal.onde_de_choc.rpc(global_position)
 	for o in principal.objets.values():
 		var d: Vector3 = o.global_position - global_position
-		if o.collision_layer != R.COUCHE_OBJETS or absf(d.y) > 2.2 or Vector2(d.x, d.z).length() > 2.2 + o.taille.length() * 0.4:
+		var loin := Vector3(d.x, 0.0, d.z)
+		if absf(d.y) > 2.4 or loin.length() > R.ONDE_RAYON:
 			continue
 		if not o.prises.is_empty():
 			principal.objet_info.rpc(o.id, o.valeur, [])
-		var loin := Vector3(d.x, 0.0, d.z)
+		var force := 1.0 - 0.6 * loin.length() / R.ONDE_RAYON
 		loin = loin.normalized() if loin.length() > 0.05 else Vector3(sin(o.id * 1.7), 0.0, cos(o.id * 1.7))
 		o.sleeping = false
-		o.apply_central_impulse((loin * 5.5 + Vector3.UP * 2.0) * minf(o.mass, 90.0))
+		o.apply_central_impulse((loin * 6.0 + Vector3.UP * 2.2) * force * minf(o.mass, 90.0))
+	for j in principal.joueurs.values():
+		var d: Vector3 = j.global_position - global_position
+		var loin := Vector3(d.x, 0.0, d.z)
+		if not j.vivant or absf(d.y) > 2.4 or loin.length() > R.ONDE_RAYON:
+			continue
+		var force := 1.0 - 0.6 * loin.length() / R.ONDE_RAYON
+		loin = loin.normalized() if loin.length() > 0.05 else Vector3(0.0, 0.0, 1.0)
+		principal.souffler(j.id, (loin * R.ONDE_RECUL + Vector3.UP * 3.5) * force)
 	_repue = 0.0
 	_roder(0.3)
 
 
-# il ne sort pas de la maison, même tiré ou poussé par un meuble ; et s'il s'y retrouve, c'est qu'on l'y a traîné : il se dégage
+# il ne sort pas de la maison, même tiré ou poussé par un meuble : il se retrouve derrière le seuil (et cela compte comme être bloqué)
 func _rester_dedans() -> void:
 	var p := global_position
 	var dans := Vector3(clampf(p.x, 0.7, maison.largeur - 0.7), p.y, clampf(p.z, 0.7, maison.profondeur - 1.15))
 	if dans.distance_to(p) > 0.02:
 		global_position = dans
-		if _passe <= 0.0 and dans.distance_to(p) > 0.25:
-			_degager()
+		if dans.distance_to(p) > 0.25:
+			_bloque()
 
 
 func _a_plat(p: Vector3) -> float:

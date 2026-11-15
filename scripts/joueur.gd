@@ -15,6 +15,7 @@ var principal
 var vivant := true
 var blesse := false           # un coup de la chose : le prochain tue
 var accroupi := false
+var recul := Vector3.ZERO        # ce qui le repousse encore (une onde de choc) : cela s'éteint en une demi-seconde
 var discret := 1.0            # ce qu'il reste du bruit de ses pas (des chaussons)
 var _forme: CollisionShape3D   # son corps : il rapetisse quand il se baisse
 var bruit := 0.0              # le rayon, en mètres, où on l'entend
@@ -331,8 +332,9 @@ func _physics_process(dt: float) -> void:
 		if blesse:                     # la peur bleue : les jambes ne suivent plus
 			v *= R.PEUR_LENTEUR
 		var k := minf(1.0, dt * 12.0)
-		velocity.x = lerpf(velocity.x, dir.x * v, k)
-		velocity.z = lerpf(velocity.z, dir.z * v, k)
+		velocity.x = lerpf(velocity.x, dir.x * v + recul.x, k)
+		velocity.z = lerpf(velocity.z, dir.z * v + recul.z, k)
+		recul = recul.move_toward(Vector3.ZERO, dt * 18.0)
 		if is_on_floor():
 			if joue and (Input.is_physical_key_pressed(KEY_SPACE) or doigt.saut):
 				velocity.y = R.SAUT

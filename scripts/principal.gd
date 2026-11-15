@@ -797,6 +797,56 @@ func dose_recue(d: float) -> void:
 	ma_dose = clampf(d, 0.0, 1.0)
 
 
+# l'onde de choc du fantôme atteint un porteur : elle le repousse, et lui donne une peur bleue (sans le tuer, même s'il l'avait déjà)
+func souffler(qui: int, elan: Vector3) -> void:
+	var j = joueurs.get(qui)
+	if j == null or not j.vivant:
+		return
+	if qui == mon_id:
+		souffle(elan)
+	else:
+		souffle.rpc_id(qui, elan)
+	if not j.blesse:
+		frapper(qui)
+
+
+@rpc("authority", "call_remote", "reliable")
+func souffle(elan: Vector3) -> void:
+	if moi != null and moi.vivant:
+		moi.velocity += elan
+		moi.recul = elan * Vector3(1.0, 0.0, 1.0)
+
+
+# l'onde, telle qu'on la voit et l'entend : une sphère pâle qui enfle d'un coup et s'efface
+@rpc("authority", "call_local", "reliable")
+func onde_de_choc(ou: Vector3) -> void:
+	sons.jouer_a("hurle", ou + Vector3.UP * 1.5, 10.0)
+	sons.jouer_a("choc", ou + Vector3.UP, 10.0)
+	if monde == null:
+		return
+	var bulle := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 2.0
+	bulle.mesh = sphere
+	var voile := StandardMaterial3D.new()
+	voile.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	voile.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	voile.cull_mode = BaseMaterial3D.CULL_DISABLED
+	voile.albedo_color = Color(0.9, 0.95, 1.0, 0.55)
+	bulle.material_override = voile
+	bulle.position = ou + Vector3.UP
+	bulle.scale = Vector3.ONE * 0.4
+	monde.add_child(bulle)
+	var t := bulle.create_tween()
+	t.set_parallel(true)
+	t.tween_property(bulle, "scale", Vector3.ONE * R.ONDE_RAYON, 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	t.tween_property(voile, "albedo_color:a", 0.0, 0.45)
+	t.chain().tween_callback(bulle.queue_free)
+	if moi != null and moi.global_position.distance_to(ou) < R.ONDE_RAYON * 2.0:
+		ui.annoncer("Une onde de choc !", 2.0)
+
+
 # le fantôme vient de vous attraper : sa face vous saute au visage, et hurle
 func _screamer() -> void:
 	ui.screamer()
