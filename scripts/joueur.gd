@@ -16,6 +16,7 @@ var vivant := true
 var blesse := false           # un coup de la chose : le prochain tue
 var accroupi := false
 var discret := 1.0            # ce qu'il reste du bruit de ses pas (des chaussons)
+var _forme: CollisionShape3D   # son corps : il rapetisse quand il se baisse
 var bruit := 0.0              # le rayon, en mètres, où on l'entend
 var yaw := 0.0
 var pitch := 0.0
@@ -51,16 +52,17 @@ func preparer(p, i: int, depart: Vector3, rang: int) -> void:
 	set_multiplayer_authority(i)
 	local = i == p.mon_id
 	collision_layer = R.COUCHE_JOUEURS
-	collision_mask = R.COUCHE_DECOR | R.COUCHE_OBJETS | R.COUCHE_LEGERS
+	collision_mask = R.COUCHE_DECOR | R.COUCHE_OBJETS      # (pas les petits objets : on marche dedans, ils s'écartent)
 	position = depart
 	cible_pos = depart
 	var forme := CollisionShape3D.new()
 	var c := CapsuleShape3D.new()
 	c.radius = 0.3
-	c.height = 1.75
+	c.height = R.TAILLE
 	forme.shape = c
-	forme.position.y = 0.875
+	forme.position.y = R.TAILLE * 0.5
 	add_child(forme)
+	_forme = forme
 	tete = Node3D.new()
 	tete.position.y = R.YEUX
 	add_child(tete)
@@ -322,7 +324,7 @@ func _physics_process(dt: float) -> void:
 	if vivant:
 		var pousse := Vector3(cote, 0.0, -avance)
 		var dir := (Basis(Vector3.UP, yaw) * pousse).normalized() if pousse.length() > 0.15 else Vector3.ZERO
-		accroupi = joue and (Input.is_physical_key_pressed(KEY_CTRL) or doigt.accroupi)
+		accroupi = joue and (Input.is_physical_key_pressed(KEY_CTRL) or doigt.accroupi or _sous_un_plafond())
 		var court: bool = (Input.is_physical_key_pressed(KEY_SHIFT) or doigt.court) and not accroupi and dir != Vector3.ZERO
 		var v: float = R.ACCROUPI if accroupi else (R.COURSE if court else R.MARCHE)
 		v *= frein()
@@ -392,7 +394,20 @@ func frein() -> float:
 	return 1.0 / (1.0 + o.mass / float(maxi(o.porteurs.size(), 1)) / R.FREIN)
 
 
+# baissé sous quelque chose (un linteau, quand on est monté sur un meuble) : on ne se relève pas dedans
+func _sous_un_plafond() -> bool:
+	if _forme.shape.height > R.TAILLE_ACCROUPI + 0.05:
+		return false
+	var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0.0, R.TAILLE_ACCROUPI - 0.1, 0.0), global_position + Vector3(0.0, R.TAILLE + 0.05, 0.0), R.COUCHE_DECOR | R.COUCHE_OBJETS)
+	q.exclude = [get_rid()]
+	return not get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
 func _regarder(dt: float) -> void:
+	var taille: float = R.TAILLE_ACCROUPI if accroupi and vivant else R.TAILLE      # son corps suit : baissé, il passe là où debout il ne passe pas
+	if not is_equal_approx(_forme.shape.height, taille):
+		_forme.shape.height = taille
+		_forme.position.y = taille * 0.5
 	if not is_finite(yaw) or not is_finite(pitch):      # (une souris qui rend n'importe quoi ne doit pas éteindre l'écran)
 		yaw = 0.0
 		pitch = 0.0

@@ -46,6 +46,9 @@ var _carte: AStarGrid2D            # sa carte fine du niveau où il est : les mu
 var _cartes := {}                 # une carte par niveau
 var _durs := {}                   # par niveau, ce qui ne bouge pas : les murs, les escaliers, ce qui tient à la maison
 var _niv := 0                     # le niveau de la carte qu'il tient
+var _renonce := 0                  # combien de fois de suite il a renoncé sans avoir pu s'éloigner
+var _d_ou_il_renonce := Vector3.INF
+var _passe := 0.0                  # tant que ça dure, plus aucun meuble ne l'arrête (il vient de tout renverser)
 var _i_marche := -1               # dans sa route, le point qui est au bout d'un escalier : il y va tout droit, par les marches
 var _etapes := false              # sa route ne mène qu'à un escalier, ou au bout de celui où il est : arrivé, il la refait
 var _t_carte := 0.0
@@ -244,6 +247,11 @@ func entendre(ou: Vector3, rayon: float) -> void:
 func avancer(dt: float) -> void:
 	if mode == DORT:
 		return
+	_rester_dedans()
+	if _passe > 0.0:
+		_passe -= dt
+		if _passe <= 0.0:
+			collision_mask = R.COUCHE_DECOR | R.COUCHE_OBJETS
 	_interet = maxf(_interet - dt * 1.5, 0.0)
 	_repue = maxf(_repue - dt, 0.0)
 	_t_bute = maxf(_t_bute - dt, 0.0)
@@ -351,10 +359,52 @@ func _buter() -> void:
 		_evite[_case(route[_i])] = Time.get_ticks_msec() + 6000
 	if _butees >= R.CHOSE_BUTEES:
 		_butees = 0
+		# enfermé ? S'il renonce encore au même endroit, c'est qu'on l'a coincé : il se dégage
+		if _d_ou_il_renonce.is_finite() and global_position.distance_to(_d_ou_il_renonce) < 2.5:
+			_renonce += 1
+		else:
+			_renonce = 1
+		_d_ou_il_renonce = global_position
+		if _renonce >= R.CHOSE_RAGE:
+			_degager()
+			return
 		_repue = 3.0
 		_roder(2.0)
 		return
 	_aller(_destination)
+
+
+# coincé (dans un angle, derrière un meuble, entre un meuble et une porte) : il hurle et renverse tout ce qui l'entoure. Les meubles
+# volent, et s'abîment ; ceux qui les tenaient les lâchent. Puis, le temps de sortir de là, rien ne l'arrête.
+func _degager() -> void:
+	_renonce = 0
+	_butees = 0
+	_passe = R.CHOSE_PASSE
+	collision_mask = R.COUCHE_DECOR
+	principal.son_a.rpc("hurle", global_position + Vector3.UP * 2.0, 6.0)
+	principal.annonce.rpc("Coincé, il a tout renversé pour se dégager !")
+	for o in principal.objets.values():
+		var d: Vector3 = o.global_position - global_position
+		if o.collision_layer != R.COUCHE_OBJETS or absf(d.y) > 2.2 or Vector2(d.x, d.z).length() > 2.2 + o.taille.length() * 0.4:
+			continue
+		if not o.prises.is_empty():
+			principal.objet_info.rpc(o.id, o.valeur, [])
+		var loin := Vector3(d.x, 0.0, d.z)
+		loin = loin.normalized() if loin.length() > 0.05 else Vector3(sin(o.id * 1.7), 0.0, cos(o.id * 1.7))
+		o.sleeping = false
+		o.apply_central_impulse((loin * 5.5 + Vector3.UP * 2.0) * minf(o.mass, 90.0))
+	_repue = 0.0
+	_roder(0.3)
+
+
+# il ne sort pas de la maison, même tiré ou poussé par un meuble ; et s'il s'y retrouve, c'est qu'on l'y a traîné : il se dégage
+func _rester_dedans() -> void:
+	var p := global_position
+	var dans := Vector3(clampf(p.x, 0.7, maison.largeur - 0.7), p.y, clampf(p.z, 0.7, maison.profondeur - 1.15))
+	if dans.distance_to(p) > 0.02:
+		global_position = dans
+		if _passe <= 0.0 and dans.distance_to(p) > 0.25:
+			_degager()
 
 
 func _a_plat(p: Vector3) -> float:
@@ -434,7 +484,7 @@ func _reporter() -> void:
 			var boite: Vector3 = porte.forme.shape.size
 			for c in _cases_de(Rect2(porte.centre.x - boite.x * 0.5, porte.centre.z - boite.z * 0.5, boite.x, boite.z).grow(0.2)):
 				_carte.set_point_solid(c, true)
-	for o in principal.objets.values():
+	for o in (principal.objets.values() if _passe <= 0.0 else []):      # (quand il vient de tout renverser, plus rien ne compte)
 		if o.collision_layer != R.COUCHE_OBJETS:
 			continue                       # (trop léger : il passe au travers)
 		var base: Basis = o.global_transform.basis

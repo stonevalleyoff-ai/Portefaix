@@ -899,6 +899,7 @@ func _seul() -> void:
 	await _attendre(0.2)
 	jeu.bonus_voulu = []
 	await _bruits()
+	await _failles()
 	await _argent()
 	await _etages()
 	await _bunker()
@@ -931,6 +932,93 @@ func _suivre(vers: Vector3, delai: float) -> Array:
 			return [true, marches, (Time.get_ticks_msec() - t0) / 1000.0]
 		await get_tree().physics_frame
 	return [false, marches, delai]
+
+
+# vers le nord, à pied, pour de bon : debout ou baissé, en sautant ; vrai s'il passe cette ligne
+func _vers_le_nord(j, jusque: float, baisse: bool, delai: float) -> bool:
+	j.pilote = false
+	j.yaw = 0.0
+	j.pitch = 0.0
+	var t0 := Time.get_ticks_msec()
+	var k := 0
+	while j.global_position.z > jusque and Time.get_ticks_msec() - t0 < delai * 1000.0:
+		k += 1
+		jeu.tactile.vecteur = Vector2(0.0, -1.0)
+		jeu.tactile.accroupi = baisse
+		jeu.tactile.saut = k % 40 < 3
+		await get_tree().physics_frame
+	jeu.tactile.vecteur = Vector2.ZERO
+	jeu.tactile.saut = false
+	return j.global_position.z <= jusque
+
+
+# les failles qu'on a trouvées en jouant, et ce qu'on voulait pouvoir faire
+func _failles() -> void:
+	print("17. Les failles")
+	jeu.lancer()
+	await _attendre(0.5)
+	jeu.repit = 1e9
+	jeu.chat.reste = 1e9
+	var m = jeu.maison
+	var moi = jeu.moi
+	var chose = jeu.chose
+	for o in jeu.objets.values():                   # (le couloir, vide)
+		if absf(o.global_position.z - 8.0) < 1.2:
+			_mettre(o, Vector3(2.5 + (o.id % 4) * 1.6, 0.5, m.profondeur + 2.0 + ((o.id / 4) % 6) * 1.6))
+	# marcher dans un petit objet : il s'écarte, on passe
+	var carton = _trouver("carton")
+	_mettre(carton, Vector3(15.0, 0.25, 8.0))
+	moi.global_position = Vector3(13.0, 0.05, 8.0)
+	moi.velocity = Vector3.ZERO
+	await _attendre(0.6)
+	var passe: bool = await _avancer(moi, 1.0, 17.0, 4.0)
+	verif(passe and Vector2(carton.global_position.x - 15.0, carton.global_position.z - 8.0).length() > 0.25, "un carton en travers du couloir : le porteur marche dedans, il s'écarte, et l'on passe")
+	_mettre(carton, Vector3(3.0, 0.3, m.profondeur + 12.0))
+	# un lit dans l'encadrement d'une porte : debout, on ne passe pas ; baissé, on monte dessus et l'on passe sous le linteau
+	var lit = _trouver("lit")
+	_mettre(lit, Vector3(12.0, 0.3, 6.5))
+	await _attendre(1.0)
+	moi.global_position = Vector3(12.0, 0.05, 8.4)
+	moi.velocity = Vector3.ZERO
+	var debout: bool = await _vers_le_nord(moi, 5.0, false, 4.0)
+	moi.global_position = Vector3(12.0, 0.05, 8.4)
+	moi.velocity = Vector3.ZERO
+	jeu.tactile.accroupi = false
+	await _images(10)
+	var baisse: bool = await _vers_le_nord(moi, 5.0, true, 7.0)
+	var petit: bool = moi._forme.shape.height < 1.1
+	jeu.tactile.accroupi = false
+	await _attendre(0.6)
+	verif(not debout and baisse and petit and is_equal_approx(moi._forme.shape.height, R.TAILLE), "un lit dans l'encadrement d'une porte : debout, le linteau arrête ; baissé, on saute dessus et l'on passe ; de l'autre côté, on se relève")
+	_mettre(lit, Vector3(8.0, 0.4, m.profondeur + 12.0))
+	_pilote(moi)
+	moi.global_position = Vector3(m.porte_x, 0.05, m.profondeur + 3.0)
+	# le fantôme, coincé : il renverse tout
+	chose.reveiller()
+	chose._roder(60.0)
+	chose.global_position = Vector3(20.0, 0.0, 8.0)
+	var canape = _trouver("canape")
+	_mettre(canape, Vector3(21.3, 0.45, 8.0))
+	canape.rotation.y = PI * 0.5
+	await _attendre(0.8)
+	var avant: Vector3 = canape.global_position
+	chose._butees = R.CHOSE_BUTEES - 1
+	chose._buter()
+	var une_fois: bool = chose._passe <= 0.0
+	chose._butees = R.CHOSE_BUTEES - 1
+	chose._buter()
+	var libre: bool = chose._passe > 0.0 and chose.collision_mask == R.COUCHE_DECOR
+	await _attendre(1.0)
+	var vole: float = canape.global_position.distance_to(avant)
+	await _attendre(R.CHOSE_PASSE)
+	verif(une_fois and libre and vole > 1.0 and chose.collision_mask == (R.COUCHE_DECOR | R.COUCHE_OBJETS),
+		"le fantôme coincé : il renonce une fois ; la seconde, au même endroit, il renverse ce qui l'entoure (le canapé vole à %.1f m), passe, puis les meubles l'arrêtent de nouveau" % vole)
+	# tiré dehors : il n'y reste pas
+	chose.global_position = Vector3(m.porte_x, 0.0, m.profondeur + 1.5)
+	await _attendre(0.3)
+	verif(chose.global_position.z <= m.profondeur - 1.1 and m.dedans(chose.global_position), "traîné dans la cour par un meuble, il se retrouve aussitôt derrière le seuil")
+	jeu.tuer(1)
+	await _attendre(0.2)
 
 
 # l'argent : la facture d'une nuit, la caisse, la dette, la boutique, et ce que font les achats
