@@ -118,10 +118,15 @@ const SABOTAGES := {
 	"plume": {"nom": "Meubles en apesanteur", "duree": 15.0},
 }
 
-# le quota : la part de la maison à charger, selon le nombre de porteurs
-const QUOTA := 0.25
-const QUOTA_PAR_JOUEUR := 0.06
-const QUOTA_MAX := 0.6
+# le contrat : ce que l'agence demande de charger. Il se règle sur le lieu (plus il est dur, moins elle en demande, et plus sa prime est
+# forte) et sur le nombre de porteurs (chacun de plus en ajoute les trois quarts), sans jamais dépasser une part de ce qu'il y a à prendre.
+# Seul, en jouant parfaitement, on charge environ 5 000 € au manoir et 4 500 € au bunker en une nuit : le contrat en demande moins de la moitié.
+const CONTRAT := {
+	"manoir": {"base": 2000, "prime": 0.10, "dit": "une seule chose y dort"},
+	"bunker": {"base": 1600, "prime": 0.30, "dit": "difficile : trois créatures, des radiations"},
+}
+const CONTRAT_JOUEUR := 0.75     # chaque porteur de plus ajoute les trois quarts du contrat de base
+const CONTRAT_MAX := 0.4         # jamais plus de cette part de ce qu'il y a à prendre
 
 # les bras : élastiques. Ils s'accrochent à ce qu'on prend, s'étirent, et s'arrachent si l'on tire trop ; puis ils repoussent.
 const BRAS_TENDU := 2.1       # au-delà, le bras rougit, et rappelle son porteur vers ce qu'il tient
@@ -136,12 +141,13 @@ const BRAS_ECART := 0.24      # de combien les deux mains s'écartent sur ce qu'
 # Ce qu'on a chargé est la recette. L'agence prend sa commission, le camion se loue, les cotisations tombent sur ce qui reste, la casse
 # est pour les porteurs, un quota manqué se paie, un porteur mort aussi ; et s'il reste quelque chose, l'impôt en prend sa part.
 # Le reste se partage entre les porteurs. S'il ne reste rien, c'est une dette.
-const COMMISSION := 0.30
-const FRAIS := [["La location du camion", 600], ["L'essence", 120], ["L'assurance", 180]]
-const COTISATIONS := 0.45
-const IMPOT := 0.25
-const PENALITE := 0.5         # de ce qui manque au quota
-const OBSEQUES := 500         # par porteur qui ne voit pas le jour
+const COMMISSION := 0.20
+const FRAIS := [["La location du camion", 250], ["L'essence", 60]]
+const FRAIS_PORTEUR := 60     # l'assurance, par porteur
+const COTISATIONS := 0.20
+const IMPOT := 0.15
+const PENALITE := 0.3         # de ce qui manque au contrat
+const OBSEQUES := 300         # par porteur qui ne voit pas le jour
 const INTERETS := 0.10        # d'une dette, à chaque nuit
 const SAISIE := 5000          # passé cette dette, l'huissier saisit
 const STOCK_MAX := 3          # de ce qui ne sert qu'une fois
@@ -167,17 +173,21 @@ const LEURRE_BRUIT := 24.0
 
 
 # la facture d'une nuit : ses lignes ([quoi, combien]), et ce qu'il reste à partager (ou à devoir)
-static func facture(recette: int, du: int, casse: int, morts: int) -> Dictionary:
+static func facture(recette: int, du: int, casse: int, morts: int, porteurs: int = 1, lieu: String = "manoir") -> Dictionary:
 	var lignes: Array = [["Ce que vous avez chargé", recette]]
 	var commission := int(recette * COMMISSION)
 	lignes.append(["La commission de l'agence (%d %%)" % int(COMMISSION * 100), -commission])
 	for f in FRAIS:
 		lignes.append([f[0], -f[1]])
+	lignes.append(["L'assurance (%d porteur%s)" % [maxi(porteurs, 1), "s" if porteurs > 1 else ""], -FRAIS_PORTEUR * maxi(porteurs, 1)])
 	lignes.append(["Les cotisations (%d %%)" % int(COTISATIONS * 100), -int((recette - commission) * COTISATIONS)])
 	if casse > 0:
 		lignes.append(["La casse, à vos frais", -casse])
 	if recette < du:
-		lignes.append(["La pénalité : il manquait %d € au quota" % (du - recette), -int((du - recette) * PENALITE)])
+		lignes.append(["La pénalité : il manquait %d € au contrat" % (du - recette), -int((du - recette) * PENALITE)])
+	elif du > 0:                         # le contrat rempli : la prime de l'agence, d'autant plus forte que le lieu est dur
+		var prime := int(du * CONTRAT.get(lieu, CONTRAT["manoir"]).prime)
+		lignes.append(["La prime de l'agence : contrat rempli", prime])
 	if morts > 0:
 		lignes.append(["Les obsèques (%d)" % morts, -morts * OBSEQUES])
 	var net := 0
@@ -298,6 +308,12 @@ const CATALOGUE := {
 }
 
 
-static func quota(total: int, joueurs: int) -> int:
-	var part: float = minf(QUOTA + QUOTA_PAR_JOUEUR * float(maxi(joueurs, 1) - 1), QUOTA_MAX)
-	return int(round(float(total) * part / 10.0)) * 10
+static func quota(total: int, joueurs: int, lieu: String = "manoir") -> int:
+	var base: float = CONTRAT.get(lieu, CONTRAT["manoir"]).base
+	var voulu: float = base * (1.0 + CONTRAT_JOUEUR * float(maxi(joueurs, 1) - 1))
+	return int(round(minf(voulu, float(total) * CONTRAT_MAX) / 10.0)) * 10
+
+
+# la prime promise par le contrat, s'il est rempli
+static func prime_contrat(du: int, lieu: String) -> int:
+	return int(du * CONTRAT.get(lieu, CONTRAT["manoir"]).prime)

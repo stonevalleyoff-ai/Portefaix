@@ -369,8 +369,15 @@ func _seul() -> void:
 	for o in jeu.objets.values():
 		dedans = dedans and m.dedans(o.global_position)
 	verif(nombre >= 40 and dedans, "%d objets, tous dans la maison, pour %d €" % [nombre, jeu.total])
-	verif(jeu.quota == R.quota(jeu.total, 1) and jeu.quota > 0 and jeu.quota < jeu.total / 2, "le quota d'un porteur seul : %d €" % jeu.quota)
-	verif(R.quota(jeu.total, 4) > jeu.quota and R.quota(jeu.total, 9) <= int(jeu.total * R.QUOTA_MAX) + 10, "il monte avec le nombre de porteurs, sans passer %d %%" % int(R.QUOTA_MAX * 100))
+	verif(jeu.quota == R.quota(jeu.total, 1) and jeu.quota > 0 and jeu.quota < jeu.total / 2, "le contrat d'un porteur seul : %d €" % jeu.quota)
+	verif(R.quota(jeu.total, 4) > jeu.quota and R.quota(jeu.total, 9) <= int(jeu.total * R.CONTRAT_MAX) + 10, "il monte avec le nombre de porteurs, sans passer %d %% de ce qu'il y a à prendre" % int(R.CONTRAT_MAX * 100))
+	# le contrat : le lieu et le nombre de porteurs, pas la taille de la maison
+	var grand := 1000000
+	var seul_m: int = R.quota(grand, 1, "manoir")
+	var seul_b: int = R.quota(grand, 1, "bunker")
+	var quatre_m: int = R.quota(grand, 4, "manoir")
+	verif(seul_m == R.CONTRAT["manoir"].base and seul_b < seul_m and R.prime_contrat(seul_b, "bunker") > R.prime_contrat(seul_m, "manoir") and quatre_m > seul_m * 3 and quatre_m < seul_m * 4,
+		"le contrat se règle sur le lieu et les porteurs : seul, %d € au manoir, %d € au bunker (plus dur : moins demandé, prime %d € contre %d €) ; à quatre, %d € au manoir" % [seul_m, seul_b, R.prime_contrat(seul_b, "bunker"), R.prime_contrat(seul_m, "manoir"), quatre_m])
 	var tele = _trouver("tele")
 	var meuble = _trouver("meuble_tele")
 	var canape = _trouver("canape")
@@ -1054,11 +1061,12 @@ func _argent() -> void:
 	print("15. L'argent")
 	var b = jeu.bourse
 	# la facture, sur le papier
-	var bonne: Dictionary = R.facture(6000, 5000, 200, 0)
-	var maigre: Dictionary = R.facture(2000, 5000, 0, 1)
-	var pris := 6000 - int(bonne.net)
-	verif(bonne.net > 300 and bonne.net < 1500 and pris > 4500, "une bonne nuit : 6 000 € chargés, il en reste %d une fois l'agence, les frais, les cotisations, la casse et l'impôt servis (%d %% de pris)" % [bonne.net, pris * 100 / 6000])
-	verif(maigre.net < -1500, "une mauvaise : 2 000 € chargés pour un quota de 5 000, un mort : on doit %d €" % -int(maigre.net))
+	var juste: Dictionary = R.facture(2400, 2000, 100, 0, 1, "manoir")
+	var bonne: Dictionary = R.facture(6000, 5000, 200, 0, 2, "manoir")
+	var maigre: Dictionary = R.facture(800, 2000, 0, 1, 1, "manoir")
+	var garde := int(juste.net) * 100 / 2400
+	verif(garde >= 40 and garde <= 60 and int(bonne.net) > 2400, "seul, un contrat de 2 000 € rempli (2 400 € chargés) : il en reste %d € une fois tout servi, soit %d %% ; à deux, 6 000 € chargés : %d € à partager" % [juste.net, garde, bonne.net])
+	verif(maigre.net < 0 and maigre.net > -1500, "une mauvaise nuit : 800 € chargés pour un contrat de 2 000, un mort : on doit %d €" % -int(maigre.net))
 	# une nuit jouée : la part va en caisse
 	b.argent = 0
 	b.objets = {}
@@ -1067,10 +1075,10 @@ func _argent() -> void:
 	jeu.repit = 1e9
 	jeu.chat.reste = 1e9
 	jeu.charge = jeu.quota + 3000
-	var attendu: int = R.facture(jeu.charge, jeu.quota, 0, 0).net
+	var attendu: int = R.facture(jeu.charge, jeu.quota, 0, 0, 1, jeu.maison.lieu).net
 	jeu.finir(true, "Le camion part, chargé.")
 	await _attendre(0.3)
-	verif(jeu.etat == jeu.FIN and b.argent == attendu and attendu > 0 and jeu.ui._fin_compte.text.contains("commission") and jeu.ui._fin_compte.text.contains("En caisse : %d €" % attendu),
+	verif(jeu.etat == jeu.FIN and b.argent == attendu and attendu > 0 and jeu.ui._fin_compte.text.contains("commission") and jeu.ui._fin_compte.text.contains("prime de l'agence") and jeu.ui._fin_compte.text.contains("En caisse : %d €" % attendu),
 		"la nuit gagnée : l'écran de fin détaille la facture, et il reste %d € en caisse" % b.argent)
 	# la boutique
 	b.argent = 2000
@@ -1144,7 +1152,7 @@ func _argent() -> void:
 	var bas: float = jeu.ui._fin_rejouer.get_global_rect().end.y
 	verif(jeu.ui._fin_rejouer.is_visible_in_tree() and bas < ecran.y and jeu.ui._fin_defile.get_global_rect().end.y <= ecran.y + 1.0 and jeu.ui._fin_compte.text.count("\n") >= 8,
 		"l'écran de fin : les boutons sont au-dessus de la facture, à l'écran, et la facture (%d lignes) tient dans un cadre qui défile" % (jeu.ui._fin_compte.text.count("\n") + 1))
-	verif(jeu.etat == jeu.FIN and dette > 1500 and jeu.ui._fin_compte.text.contains("Dette") and b.acheter("leurre").contains("crédit"), "une nuit perdue, rien de chargé, un mort : %d € de dette, et la boutique ne fait plus crédit" % dette)
+	verif(jeu.etat == jeu.FIN and dette > 800 and jeu.ui._fin_compte.text.contains("Dette") and b.acheter("leurre").contains("crédit"), "une nuit perdue, rien de chargé, un mort : %d € de dette, et la boutique ne fait plus crédit" % dette)
 	b.argent = -1000
 	var dit: Array = b.encaisser(-500)
 	verif(b.argent == -1600 and dit.size() == 1, "la dette porte intérêt à chaque nuit : 1 000 € dus, une nuit à −500 €, on doit 1 600 €")

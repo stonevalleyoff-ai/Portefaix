@@ -754,7 +754,8 @@ func _animer_screamer() -> void:
 # où l'on joue : le bouton du menu passe de l'un à l'autre
 func lieu(nom: String) -> void:
 	_b_lieu.text = "Lieu : le bunker" if nom == "bunker" else "Lieu : le manoir hanté"
-	_b_lieu.tooltip_text = "Plusieurs créatures, des radiations. Changer de lieu." if nom == "bunker" else "Une seule chose y dort. Changer de lieu."
+	var c: Dictionary = R.CONTRAT.get(nom, R.CONTRAT["manoir"])
+	_b_lieu.tooltip_text = "%s. Contrat, seul : %d € (prime %d %%). Changer de lieu." % [c.dit, c.base, int(c.prime * 100)]
 
 
 # la dose de radiations : un compteur, et l'écran qui verdit

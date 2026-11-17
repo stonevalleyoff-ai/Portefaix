@@ -504,7 +504,7 @@ func commencer(graine: int, ids: Array, pseudos: Array, ou_donc: String = "manoi
 		c.preparer(self)
 		choses.append(c)
 	chose = choses[0]
-	quota = R.quota(total, ids.size())
+	quota = R.quota(total, ids.size(), maison.lieu)
 	temps = R.DUREE_NUIT
 	charge = 0
 	gagne = false
@@ -527,13 +527,15 @@ func commencer(graine: int, ids: Array, pseudos: Array, ou_donc: String = "manoi
 	doses = {}
 	ma_dose = 0.0
 	ui.dose(0.0, 0.0, false)
+	# le contrat : ce qu'il faut charger, pour combien de porteurs, et la prime s'il est rempli
+	var contrat := "Le contrat : %d € à charger avant 6 h, %s. Rempli, l'agence ajoute %d €." % [quota, "seul" if joueurs.size() == 1 else "à %d" % joueurs.size(), R.prime_contrat(quota, maison.lieu)]
 	if maison.lieu == "bunker":
-		ui.annoncer("Le bunker : trois niveaux sous terre, par l'escalier au bout du couloir. Ils sont %d là-dessous.\nChargez pour %d € avant 6 h. Fuyez ce qui luit en vert." % [choses.size(), quota], 10.0)
+		ui.annoncer("Le bunker : trois niveaux sous terre, par l'escalier au bout du couloir. Ils sont %d là-dessous. Fuyez ce qui luit en vert.\n%s" % [choses.size(), contrat], 10.0)
 	elif maison.bonus.is_empty():
-		ui.annoncer("Chargez pour %d € dans la zone jaune avant 6 h. Puis klaxonnez.%s" % [quota, "\nL'escalier est au bout du couloir : un étage, un sous-sol." if maison.niveaux.size() > 1 else ""], 9.0)
+		ui.annoncer("%s\nChargez dans le camion, puis klaxonnez.%s" % [contrat, " L'escalier est au bout du couloir." if maison.niveaux.size() > 1 else ""], 9.0)
 	else:
 		var noms: Array = maison.bonus.map(func(b): return maison.NOMS[b])
-		ui.annoncer("MANOIR BONUS ! Ici : %s. Une fortune, en plus du quota.\nChargez pour %d € avant 6 h, puis klaxonnez." % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, quota], 10.0)
+		ui.annoncer("MANOIR BONUS ! Ici : %s. Une fortune, en plus du contrat.\n%s" % [" et ".join(noms) if noms.size() < 3 else "%s, %s et %s" % noms, contrat], 10.0)
 	if caches > 0:                           # (et ce qu'on ne voit pas en entrant)
 		ui._annonce.text += "\n%d objets précieux sont cachés ici : cherchez en hauteur, et dans les coins." % caches
 	if not tactile.actif:
@@ -894,7 +896,7 @@ func finir(victoire: bool, raison: String) -> void:
 		for o in objets.values():
 			casse += o.valeur_neuve - o.valeur
 		var recette: int = charge if morts < joueurs.size() else 0
-		fin.rpc(victoire, charge, quota, raison, R.facture(recette, quota, casse, morts))
+		fin.rpc(victoire, charge, quota, raison, R.facture(recette, quota, casse, morts, joueurs.size(), maison.lieu))
 
 
 # --- ce que l'hôte redit à tous ---
