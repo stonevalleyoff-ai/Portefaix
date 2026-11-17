@@ -4,7 +4,7 @@
 
 Un prototype en Godot 4.3, en 3D, à la première personne, pour 1 à 6 joueurs. Chaque nuit a sa maison, inventée et meublée comme une vraie ; on la vide avec des bras élastiques, qui s'arrachent si l'on tire trop. Il se joue au clavier et à la souris, ou au doigt, et dans un navigateur (seul). Des déménageurs de nuit vident une maison hantée : il faut charger pour un quota d'euros dans la zone du camion avant 6 h. Les meubles sont lourds et fragiles, la chose qui dort au fond de la maison entend tout, et le public du stream vote les sabotages.
 
-C'est un prototype : il sert à savoir si la boucle de jeu est drôle, pas à être beau. Tout y est fait de boîtes et de sons fabriqués par le code ; il n'y a aucun fichier d'image ni de son.
+C'est un prototype : il sert à savoir si la boucle de jeu est drôle. Tout y est fait de boîtes et de sons fabriqués par le code ; il n'y a aucun fichier d'image ni de son. Seules deux fontes libres (`polices/`, sous SIL Open Font License, avec leur licence) habillent les écrans : IM Fell English pour les titres, Alegreya Sans pour le reste, les mêmes que le portail et Lisière.
 
 **Jouer tout de suite** : https://stonevalleyoff-ai.github.io/Portefaix/ (une fois GitHub Pages allumé sur ce dépôt : Settings › Pages › Source : GitHub Actions).
 
@@ -25,6 +25,9 @@ Dans un navigateur : l'adresse ci-dessus. Pour la version de bureau, il faut [Go
 outils/godot.sh --path .
 ```
 
+- **Le menu** (`scripts/interface.gd`, son allure : `scripts/charte.gd`) : à gauche, le titre et ses entrées — jouer seul, jouer à plusieurs, le lieu, la boutique, les réglages, **le retour au portail** StoneValley, quitter (la version de bureau) ; en haut à droite, qui l'on est et sa caisse ; à droite, un volet qui s'ouvre pour jouer à plusieurs (en ligne avec un salon et son code ; en réseau local) ou régler (son pseudo, le chat de Twitch, le micro, les commandes). Derrière (`scripts/decor_menu.gd`), le manoir la nuit, peint par le code : la lune, les nuages, les fenêtres qui vacillent, une silhouette à la fenêtre de la tour, la grille, les tombes, le camion phares allumés, la brume, un éclair de loin en loin. Les pages du compte, du salon et de la boutique sont des cartes de verre sombre posées sur ce décor.
+- **La pause** : Échap (dans un navigateur, la souris qui se libère suffit ; au doigt, ❚❚ en haut à droite). Seul, le monde s'arrête : l'horloge, la chose, le chat. À plusieurs, rien ne s'arrête (les autres portent, la chose rôde), mais on ne bouge plus ; l'hôte qui quitte la nuit la finit pour tous. On y reprend (Échap encore, ou « Reprendre »), on y relit les commandes, on y quitte la nuit.
+- **Pour regarder un écran** : `--montrer=plusieurs|reglages|connexion|boutique|pause` au lancement l'ouvre tout de suite (avec `--hors-ligne`, sans page de connexion).
 - **Dans un navigateur** : on y joue seul, ou en ligne avec un salon ; un navigateur ne peut pas héberger en réseau local. Le micro y est éteint au départ ; la case du menu le rallume, si le navigateur l'accorde.
 - **Connecté au portail, connecté ici** : dans un navigateur (et dans l'application installée), la session est celle du [portail](https://stonevalleyoff-ai.github.io/) et des autres jeux du site, gardée sous une même clé du navigateur (`stonevalley:session`). Qui est connecté au portail arrive ici connecté, sans page de connexion ; se connecter ici connecte au portail ; se déconnecter déconnecte partout sur l'appareil. La version de bureau garde sa propre connexion (`user://compte.json`).
 - **Le compte** : le jeu s'ouvre sur une page de connexion. On s'y connecte avec son **compte Stone Valley** (le même e-mail, le même mot de passe : les comptes du projet Supabase « Vallée de pierre »), ou l'on joue sans compte. Connecté, on se choisit un pseudo, que les autres voient au salon et au-dessus de sa tête ; sans pseudo choisi ici, c'est celui de sa sauvegarde Stone Valley. On reste connecté d'une fois sur l'autre.
@@ -45,7 +48,7 @@ outils/godot.sh --path .
 | lancer ce qu'on tient | le clic droit |
 | la torche | F |
 | crier (pour qui n'a pas de micro) | V |
-| libérer la souris | Échap |
+| la pause | Échap (au doigt : ❚❚, en haut à droite) |
 
 **Au doigt** (un téléphone tenu à l'horizontale, une tablette) : le pouce gauche marche, avec un joystick qui naît où il se pose, dans la moitié gauche de l'écran. Le pouce droit regarde, en glissant, et presse les boutons : **Agir** (prendre, poser, klaxonner ; mort, pousser), **Lancer**, **Saut**, **Courir** et **Bas** (s'accroupir), qui restent enfoncés jusqu'à ce qu'on les retouche, **Torche** et **Crier** en haut à gauche. Le jeu passe au doigt tout seul sur un écran tactile, ou au premier toucher.
 
@@ -109,7 +112,10 @@ Tous les réglages sont dans `scripts/regles.gd`.
 | `scripts/chat.gd` | les votes, les spectateurs de paille, la lecture du chat de Twitch |
 | `scripts/micro.gd` | le niveau du micro (rien n'est enregistré ni envoyé) |
 | `scripts/sons.gd` | les sons, fabriqués au lancement |
-| `scripts/interface.gd` | ce qui s'écrit à l'écran |
+| `scripts/interface.gd` | ce qui s'écrit à l'écran : le menu, les pages, la partie, la pause, la fin |
+| `scripts/charte.gd` | l'allure des écrans : les fontes, les couleurs, les boutons, les champs, les cadres |
+| `scripts/decor_menu.gd` | le manoir la nuit, derrière le menu |
+| `polices/` | les deux fontes libres, avec leur licence |
 | `scripts/compte.gd` | le compte : se connecter, rester connecté, le pseudo |
 | `scripts/salon.gd` | le salon en ligne : son code, qui y est, relier les joueurs |
 | `supabase.sql` | les tables et les fonctions du salon, dans le Supabase de Stone Valley |
