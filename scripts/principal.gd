@@ -82,6 +82,8 @@ var _t_coeur := 0.0
 var _t_temoin := 0.0
 var _t_niveaux := 0.0
 var graine_jouee := 0             # la graine de la maison où l'on joue
+var en_pause := false             # la pause : seul, le monde s'arrête ; à plusieurs, la nuit continue pour les autres
+var _souris_tenue := false        # (la souris était prise : si elle se libère en pleine nuit — Échap dans un navigateur —, c'est la pause)
 
 
 func _ready() -> void:
@@ -98,7 +100,9 @@ func _ready() -> void:
 	chat.vote_clos.connect(_sur_vote)
 	ui = Interface.new()
 	ui.name = "Interface"
+	ui.process_mode = Node.PROCESS_MODE_ALWAYS       # (la pause arrête le monde, pas l'écran)
 	add_child(ui)
+	ui.pause_voulue.connect(mettre_en_pause)
 	ui.seul.connect(jouer_seul)
 	ui.heberger.connect(heberger)
 	ui.rejoindre.connect(rejoindre)
@@ -107,6 +111,7 @@ func _ready() -> void:
 	ui.quitter.connect(retour_menu)
 	compte = Compte.new()
 	compte.name = "Compte"
+	compte.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(compte)
 	compte.change.connect(_sur_compte)
 	ui.connexion.connect(compte.connecter)
@@ -137,6 +142,7 @@ func _ready() -> void:
 		ui.boutique(bourse, refus if refus != "" else "Acheté : %s." % R.BOUTIQUE[nom].nom))
 	salon = Salon.new()
 	salon.name = "Salon"
+	salon.process_mode = Node.PROCESS_MODE_ALWAYS
 	salon.principal = self
 	salon.compte = compte
 	add_child(salon)
@@ -150,6 +156,7 @@ func _ready() -> void:
 	_sur_compte()
 	tactile = Tactile.new()
 	tactile.name = "Tactile"
+	tactile.process_mode = Node.PROCESS_MODE_ALWAYS
 	tactile.jeu = self
 	add_child(tactile)
 	if web:
@@ -169,6 +176,9 @@ func _ready() -> void:
 			e.mode = a
 			add_child(e)
 			return
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--montrer="):
+			_montrer_pour_voir.call_deferred(a.trim_prefix("--montrer="))
 	if hors_ligne:
 		ui.passer_hors_ligne()
 		return
@@ -408,6 +418,7 @@ func lancer() -> void:
 
 
 func retour_menu(avis: String = "") -> void:
+	_sortir_de_la_pause()
 	_vider()
 	_hors_ligne()
 	etat = MENU
@@ -1015,6 +1026,7 @@ func annonce(t: String) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func fin(victoire: bool, c: int, q: int, raison: String, facture: Dictionary = {}) -> void:
+	_sortir_de_la_pause()
 	etat = FIN
 	gagne = victoire
 	charge = c
@@ -1274,9 +1286,63 @@ func _temoigner(dt: float) -> void:
 			ui.trouble(moi.blesse)
 
 
+# « --montrer=plusieurs|reglages|connexion|pause|boutique » : ouvrir tout de suite cet écran-là, pour le regarder (une image, un film)
+func _montrer_pour_voir(quoi: String) -> void:
+	await get_tree().create_timer(0.3).timeout
+	match quoi:
+		"plusieurs", "reglages":
+			ui._volet(quoi)
+		"connexion":
+			ui.page_connexion()
+		"boutique":
+			ui.boutique(bourse)
+		"pause":
+			jouer_seul()
+			await get_tree().create_timer(1.5).timeout
+			mettre_en_pause(true)
+
+
+# --- la pause ---
+# Échap (ou le bouton ❚❚ au doigt, ou la souris qui se libère en pleine nuit) : la carte de la pause. Seul, le monde s'arrête : la
+# chose, l'horloge, le chat ; à plusieurs, rien ne s'arrête (les autres jouent, la chose rôde), mais on ne bouge plus.
+func seul_dans_la_nuit() -> bool:
+	return multiplayer.get_peers().is_empty() and not en_reseau and salon.code == ""
+
+
+func mettre_en_pause(oui: bool) -> void:
+	if oui and (etat != PARTIE or en_pause):
+		return
+	if not oui and not en_pause:
+		return
+	en_pause = oui
+	var seul := seul_dans_la_nuit()
+	get_tree().paused = oui and seul
+	tactile._lacher()
+	if oui:
+		_souris_tenue = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		ui.pause(true, seul, serveur, moi != null and moi.vivant)
+	else:
+		ui.pause(false, seul, serveur, moi != null and moi.vivant)
+		if not tactile.actif and etat == PARTIE:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _sortir_de_la_pause() -> void:
+	en_pause = false
+	get_tree().paused = false
+	_souris_tenue = false
+
+
 func _process(dt: float) -> void:
 	if web:
 		_temoigner(dt)
+	# (la souris tenue qui se libère en pleine nuit : dans un navigateur, Échap la rend sans que la touche n'arrive au jeu)
+	if etat == PARTIE and not en_pause and not tactile.actif:
+		var tenue := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+		if _souris_tenue and not tenue and DisplayServer.window_is_focused():
+			mettre_en_pause(true)
+		_souris_tenue = tenue
 	if etat == SALON and salon.code != "":       # (au salon, on redit où en sont les liaisons : une qui n'aboutit pas finit par se dire)
 		_t_niveaux -= dt
 		if _t_niveaux <= 0.0:

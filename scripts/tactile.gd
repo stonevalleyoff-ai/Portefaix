@@ -10,7 +10,8 @@ const ENCRE := Color(0.93, 0.9, 0.82)
 const OR := Color(1.0, 0.8, 0.4)
 const RAYON_STICK := 62.0
 const REGARD := 0.0052            # radians par pixel glissé
-# l'action, ce qui est écrit, le coin d'où l'on compte (0 : en bas à droite, 1 : en haut à gauche), la place, le rayon
+# l'action, ce qui est écrit, le coin d'où l'on compte (0 : en bas à droite, 1 : en haut à gauche, 2 : en haut à droite), la place,
+# le rayon
 const BOUTONS := [
 	["agir", "Agir", 0, Vector2(-96, -104), 52.0],
 	["lancer", "Lancer", 0, Vector2(-214, -84), 33.0],
@@ -19,6 +20,7 @@ const BOUTONS := [
 	["accroupi", "Bas", 0, Vector2(-306, -120), 31.0],
 	["torche", "Torche", 1, Vector2(58, 118), 28.0],
 	["crier", "Crier", 1, Vector2(132, 118), 28.0],
+	["pause", "❚❚", 2, Vector2(-44, 44), 24.0],
 ]
 
 var jeu
@@ -84,7 +86,7 @@ func _ajuster() -> void:
 
 
 func _en_jeu() -> bool:
-	return jeu != null and jeu.etat == jeu.PARTIE and jeu.moi != null
+	return jeu != null and jeu.etat == jeu.PARTIE and jeu.moi != null and not jeu.en_pause
 
 
 func _taille() -> Vector2:
@@ -94,7 +96,7 @@ func _taille() -> Vector2:
 func position_bouton(action: String) -> Vector2:
 	for b in BOUTONS:
 		if b[0] == action:
-			return (_taille() if b[2] == 0 else Vector2.ZERO) + b[3]
+			return (_taille() if b[2] == 0 else (Vector2(_taille().x, 0.0) if b[2] == 2 else Vector2.ZERO)) + b[3]
 	return Vector2(-1, -1)
 
 
@@ -173,6 +175,8 @@ func _presser(b: String) -> void:
 			moi.torche_voulue = not moi.torche_voulue
 		"crier":
 			moi.crier()
+		"pause":
+			jeu.mettre_en_pause(true)
 
 
 func _process(_delta: float) -> void:
@@ -226,6 +230,10 @@ func _dessiner() -> void:
 			or (b[0] == "torche" and jeu.moi.torche_voulue and jeu.moi.vivant)
 		_dessin.draw_circle(p, r, Color(OR, 0.3) if enfonce else Color(0.03, 0.03, 0.05, 0.55))
 		_dessin.draw_arc(p, r, 0.0, TAU, 40, Color(OR, (0.95 if enfonce else 0.6) * k), 2.0, true)
+		if b[0] == "pause":                # (la pause : deux barres)
+			for dx in [-5.0, 3.0]:
+				_dessin.draw_rect(Rect2(p + Vector2(dx, -8.0), Vector2(3.5, 16.0)), Color(ENCRE, 0.95))
+			continue
 		var corps := 18 if b[0] == "agir" else 13
 		var mot: String = b[1]
 		if b[0] == "agir" and not jeu.moi.vivant:

@@ -1,8 +1,13 @@
 extends CanvasLayer
 # Portefaix — ce qui s'écrit à l'écran (scripts/interface.gd)
-# Le menu, le salon d'attente, la partie (l'heure, le quota, le bruit qu'on fait, le vote du chat, ce qu'on regarde) et la fin.
+# Le menu, le salon d'attente, la partie (l'heure, le quota, le bruit qu'on fait, le vote du chat, ce qu'on regarde), la pause et
+# la fin. Leur allure : scripts/charte.gd ; derrière le menu et les pages du compte, le manoir la nuit : scripts/decor_menu.gd.
+# Le menu principal : le titre, à gauche, et ses entrées (jouer seul, à plusieurs, le lieu, la boutique, les réglages, le portail,
+# quitter) ; en haut à droite, qui l'on est et sa caisse ; à droite, un volet qui s'ouvre pour jouer à plusieurs ou régler.
 
 const R = preload("res://scripts/regles.gd")
+const Charte = preload("res://scripts/charte.gd")
+const DecorMenu = preload("res://scripts/decor_menu.gd")
 
 signal seul
 signal heberger
@@ -24,8 +29,33 @@ signal salon_rejoindre(code: String)
 signal vers_boutique
 signal lieu_change
 signal achat(nom: String)
+signal pause_voulue(oui: bool)
 
-var _menu: Control
+var _menu: Control                 # les entrées du menu principal
+var _menu_racine: Control
+var _menu_colonne: VBoxContainer
+var _logo: Label
+var _devise: Label
+var _editeur: Label
+var _decor: Control
+var _racine: Control
+var _racines := {}                 # chaque page → ce qui la porte à l'écran (ce qu'on montre ou cache)
+var _volet_carte: PanelContainer   # le volet de droite : jouer à plusieurs, ou les réglages
+var _volet_titre: Label
+var _volets := {}                  # son nom → son contenu
+var _volet_ouvert := ""
+var _volet_dans: VBoxContainer
+var _b_plusieurs: Button
+var _b_reglages: Button
+var _b_portail: Button
+var _b_quitter_jeu: Button
+var _barre_compte: HBoxContainer
+var _pause: Control
+var _pause_dit: Label
+var _pause_retour: Button
+var _pause_quitter: Button
+var _pause_aide: Label
+var _pause_b_aide: Button
 var _salon: Control
 var _partie: Control
 var _fin: Control
@@ -98,8 +128,11 @@ func _ready() -> void:
 	var racine := Control.new()
 	racine.set_anchors_preset(Control.PRESET_FULL_RECT)
 	racine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	racine.theme = Charte.theme()
 	add_child(racine)
-	_menu = _page(racine)
+	_racine = racine
+	_decor = DecorMenu.new()
+	racine.add_child(_decor)
 	_connexion = _page(racine)
 	_creation = _page(racine)
 	_oubli = _page(racine)
@@ -107,6 +140,9 @@ func _ready() -> void:
 	_salon = _page(racine)
 	_fin = _page(racine)
 	_boutique = _page(racine)
+	_pause = _page(racine)
+	_racines[_pause].color = Color(0.01, 0.012, 0.02, 0.62)
+	_racines[_fin].color = Color(0.01, 0.012, 0.02, 0.72)     # (à la fin, c'est la maison qu'on voit derrière, assombrie)
 	_partie = Control.new()
 	_partie.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_partie.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -118,22 +154,30 @@ func _ready() -> void:
 	_faire_partie()
 	_faire_fin()
 	_faire_boutique()
+	_faire_pause()
 	_faire_screamer(racine)
+	get_viewport().size_changed.connect(_ajuster_menu)
+	_ajuster_menu()
 	menu("")
 
 
+# une page : un voile sur ce qui est derrière (le décor du menu, ou la maison), et au milieu, une carte de verre sombre
 func _page(racine: Control) -> Control:
-	var voile := ColorRect.new()          # la partie, derrière, s'assombrit
-	voile.color = Color(0.01, 0.012, 0.02, 0.72)
+	var voile := ColorRect.new()
+	voile.color = Color(0.01, 0.012, 0.02, 0.5)
 	voile.set_anchors_preset(Control.PRESET_FULL_RECT)
 	racine.add_child(voile)
 	var centre := CenterContainer.new()
 	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
 	voile.add_child(centre)
+	var carte := PanelContainer.new()
+	carte.theme_type_variation = "Carte"
+	centre.add_child(carte)
 	var boite := VBoxContainer.new()
-	boite.custom_minimum_size = Vector2(520, 0)
+	boite.custom_minimum_size = Vector2(500, 0)
 	boite.add_theme_constant_override("separation", 10)
-	centre.add_child(boite)
+	carte.add_child(boite)
+	_racines[boite] = voile
 	return boite
 
 
@@ -142,6 +186,8 @@ func _texte(parent: Control, t: String, corps: int = 18, couleur: Color = Color(
 	l.text = t
 	l.add_theme_font_size_override("font_size", corps)
 	l.add_theme_color_override("font_color", couleur)
+	if corps >= 36:                        # (un titre : la gravure)
+		l.add_theme_font_override("font", Charte.police(Charte.TITRE))
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	parent.add_child(l)
@@ -151,56 +197,156 @@ func _texte(parent: Control, t: String, corps: int = 18, couleur: Color = Color(
 func _bouton(parent: Control, t: String, quoi: Callable) -> Button:
 	var b := Button.new()
 	b.text = t
-	b.add_theme_font_size_override("font_size", 20)
 	b.custom_minimum_size = Vector2(0, 44)
 	b.pressed.connect(quoi)
 	parent.add_child(b)
 	return b
 
 
+# une entrée du menu principal : un mot gravé, sans cadre ; survolée, elle s'éclaire
+func _entree(t: String, quoi: Callable) -> Button:
+	var b := Button.new()
+	b.text = t
+	b.theme_type_variation = "Menu"
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.focus_mode = Control.FOCUS_ALL
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.pressed.connect(quoi)
+	_menu.add_child(b)
+	return b
+
+
+# un petit titre, dans un volet : en capitales espacées, l'or pâle
+func _rubrique(parent: Control, t: String) -> Label:
+	var l := Label.new()
+	l.text = t.to_upper()
+	l.add_theme_font_override("font", Charte.police(Charte.TEXTE_GRAS))
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", Color(Charte.OR, 0.75))
+	parent.add_child(l)
+	return l
+
 func _faire_menu() -> void:
-	_texte(_menu, "PORTEFAIX", 64, Color(1.0, 0.86, 0.5))
-	_texte(_menu, "Videz le manoir avant l'aube. Ne réveillez pas ce qui y dort.", 20)
-	_avis = _texte(_menu, "", 18, Color(1.0, 0.5, 0.4))
-	# le compte : qui l'on est, et le pseudo que les autres verront
-	var ligne_compte := HBoxContainer.new()
-	_menu.add_child(ligne_compte)
-	_en_ligne.append(ligne_compte)
+	_menu_racine = Control.new()
+	_menu_racine.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_menu_racine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_racine.add_child(_menu_racine)
+	# à gauche : le titre, la devise, les entrées du menu
+	_menu_colonne = VBoxContainer.new()
+	_menu_colonne.add_theme_constant_override("separation", 2)
+	_menu_racine.add_child(_menu_colonne)
+	_editeur = Label.new()
+	_editeur.text = "STONEVALLEY  PRÉSENTE"
+	_editeur.add_theme_font_override("font", Charte.police(Charte.TEXTE_GRAS))
+	_editeur.add_theme_font_size_override("font_size", 13)
+	_editeur.add_theme_color_override("font_color", Color(Charte.OR, 0.6))
+	_menu_colonne.add_child(_editeur)
+	_logo = Label.new()
+	_logo.text = "PORTEFAIX"
+	_logo.add_theme_font_override("font", Charte.police_logo())
+	_logo.add_theme_font_size_override("font_size", 104)
+	_logo.add_theme_color_override("font_color", Color(1.0, 0.84, 0.52))
+	_logo.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	_logo.add_theme_constant_override("shadow_offset_x", 3)
+	_logo.add_theme_constant_override("shadow_offset_y", 5)
+	_menu_colonne.add_child(_logo)
+	_devise = Label.new()
+	_devise.text = "Videz le manoir avant l'aube.\nNe réveillez pas ce qui y dort."
+	_devise.add_theme_font_override("font", Charte.police(Charte.TITRE_ITALIQUE))
+	_devise.add_theme_font_size_override("font_size", 23)
+	_devise.add_theme_color_override("font_color", Color(Charte.IVOIRE, 0.82))
+	_menu_colonne.add_child(_devise)
+	_avis = Label.new()
+	_avis.add_theme_font_size_override("font_size", 17)
+	_avis.add_theme_color_override("font_color", Charte.ALERTE)
+	_avis.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_menu_colonne.add_child(_avis)
+	var ecart := Control.new()
+	ecart.custom_minimum_size = Vector2(0, 14)
+	_menu_colonne.add_child(ecart)
+	_menu = VBoxContainer.new()
+	_menu.add_theme_constant_override("separation", 0)
+	_menu_colonne.add_child(_menu)
+	_racines[_menu] = _menu_racine
+	_b_seul = _entree("Jouer seul", func(): seul.emit())
+	_b_plusieurs = _entree("Jouer à plusieurs", func(): _volet("plusieurs"))
+	_b_lieu = _entree("", func(): lieu_change.emit())
+	_b_boutique = _entree("La boutique", func(): vers_boutique.emit())
+	_b_reglages = _entree("Réglages", func(): _volet("reglages"))
+	_b_portail = _entree("Retour au portail", aller_au_portail)
+	_b_quitter_jeu = _entree("Quitter", func(): get_tree().quit())
+	# en haut à droite : qui l'on est, et sa caisse
+	_barre_compte = HBoxContainer.new()
+	_barre_compte.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_barre_compte.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_barre_compte.add_theme_constant_override("separation", 10)
+	_barre_compte.alignment = BoxContainer.ALIGNMENT_END
+	_menu_racine.add_child(_barre_compte)
+	_en_ligne.append(_barre_compte)
 	_compte_texte = Label.new()
-	_compte_texte.add_theme_font_size_override("font_size", 18)
-	_compte_texte.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_compte_texte.clip_text = true
-	ligne_compte.add_child(_compte_texte)
-	_compte_bouton = _bouton(ligne_compte, "Se connecter", func():
+	_compte_texte.add_theme_font_size_override("font_size", 17)
+	_compte_texte.add_theme_color_override("font_color", Color(Charte.IVOIRE, 0.85))
+	_barre_compte.add_child(_compte_texte)
+	_compte_bouton = Button.new()
+	_compte_bouton.text = "Se connecter"
+	_compte_bouton.theme_type_variation = "Lien"
+	_compte_bouton.add_theme_font_size_override("font_size", 17)
+	_compte_bouton.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_compte_bouton.pressed.connect(func():
 		if _connecte:
 			deconnexion.emit()
 		else:
 			vers_connexion.emit())
-	_pseudo_ligne = HBoxContainer.new()
-	_menu.add_child(_pseudo_ligne)
-	_pseudo = LineEdit.new()
-	_pseudo.placeholder_text = "ton pseudo (16 lettres au plus)"
-	_pseudo.max_length = 16
-	_pseudo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_pseudo.add_theme_font_size_override("font_size", 18)
-	_pseudo_ligne.add_child(_pseudo)
-	_bouton(_pseudo_ligne, "Garder ce pseudo", func(): pseudo_choisi.emit(_pseudo.text))
-	# la caisse, et la boutique
-	var ligne_bourse := HBoxContainer.new()
-	_menu.add_child(ligne_bourse)
+	_barre_compte.add_child(_compte_bouton)
+	var point := Label.new()
+	point.text = "·"
+	point.add_theme_color_override("font_color", Color(Charte.OR, 0.5))
+	_barre_compte.add_child(point)
 	_bourse_texte = Label.new()
-	_bourse_texte.add_theme_font_size_override("font_size", 18)
-	_bourse_texte.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ligne_bourse.add_child(_bourse_texte)
-	_b_boutique = _bouton(ligne_bourse, "La boutique", func(): vers_boutique.emit())
-	_b_lieu = _bouton(_menu, "", func(): lieu_change.emit())
-	_b_seul = _bouton(_menu, "Jouer seul", func(): seul.emit())
+	_bourse_texte.add_theme_font_override("font", Charte.police(Charte.TEXTE_GRAS))
+	_bourse_texte.add_theme_font_size_override("font_size", 17)
+	_barre_compte.add_child(_bourse_texte)
+	# à droite : le volet (jouer à plusieurs, les réglages), fermé tant qu'on ne l'ouvre pas
+	_volet_carte = PanelContainer.new()
+	_volet_carte.theme_type_variation = "Carte"
+	_volet_carte.add_theme_stylebox_override("panel", Charte._boite(Color(0.03, 0.03, 0.05, 0.95), Color(Charte.OR, 0.25), 1, 12, Vector2(24, 20)))
+	_volet_carte.visible = false
+	_menu_racine.add_child(_volet_carte)
+	var defile := ScrollContainer.new()
+	defile.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_volet_carte.add_child(defile)
+	var dans := VBoxContainer.new()
+	dans.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dans.add_theme_constant_override("separation", 10)
+	defile.add_child(dans)
+	_volet_dans = dans
+	var tete := HBoxContainer.new()
+	dans.add_child(tete)
+	_volet_titre = Label.new()
+	_volet_titre.add_theme_font_override("font", Charte.police(Charte.TITRE))
+	_volet_titre.add_theme_font_size_override("font_size", 32)
+	_volet_titre.add_theme_color_override("font_color", Color(1.0, 0.86, 0.55))
+	_volet_titre.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tete.add_child(_volet_titre)
+	var fermer := Button.new()
+	fermer.text = "Fermer"
+	fermer.theme_type_variation = "Lien"
+	fermer.pressed.connect(func(): _volet(""))
+	tete.add_child(fermer)
+	# — à plusieurs : en ligne (un salon et son code), en réseau local (la version de bureau)
+	var plusieurs := VBoxContainer.new()
+	plusieurs.add_theme_constant_override("separation", 10)
+	dans.add_child(plusieurs)
+	_volets["plusieurs"] = plusieurs
 	_ligne_bloc = VBoxContainer.new()
 	_ligne_bloc.add_theme_constant_override("separation", 10)
-	_menu.add_child(_ligne_bloc)
+	plusieurs.add_child(_ligne_bloc)
 	_en_ligne.append(_ligne_bloc)
-	_ligne_creer = _bouton(_ligne_bloc, "Ouvrir un salon en ligne (2 à 6 joueurs)", func(): salon_creer.emit())
+	_rubrique(_ligne_bloc, "En ligne · de 2 à 6 porteurs")
+	_ligne_creer = _bouton(_ligne_bloc, "Ouvrir un salon", func(): salon_creer.emit())
+	_ligne_creer.theme_type_variation = "Principal"
 	_ligne_rang = HBoxContainer.new()
+	_ligne_rang.add_theme_constant_override("separation", 8)
 	_ligne_bloc.add_child(_ligne_rang)
 	_ligne_code = LineEdit.new()
 	_ligne_code.placeholder_text = "le code d'un salon"
@@ -214,31 +360,113 @@ func _faire_menu() -> void:
 			_ligne_code.caret_column = ou)
 	_ligne_code.text_submitted.connect(func(t: String): salon_rejoindre.emit(t))
 	_ligne_rang.add_child(_ligne_code)
-	_b_entrer = _bouton(_ligne_rang, "Entrer dans ce salon", func(): salon_rejoindre.emit(_ligne_code.text))
-	_ligne_note = _texte(_ligne_bloc, "", 15, Color(0.6, 0.62, 0.66))
-	_reseau.append(_bouton(_menu, "Héberger en réseau local (2 à 6 joueurs)", func(): heberger.emit()))
+	_b_entrer = _bouton(_ligne_rang, "Entrer", func(): salon_rejoindre.emit(_ligne_code.text))
+	_ligne_note = _texte(_ligne_bloc, "", 15, Charte.PALE)
+	_ligne_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var local := VBoxContainer.new()
+	local.add_theme_constant_override("separation", 10)
+	plusieurs.add_child(local)
+	_reseau.append(local)
+	_rubrique(local, "En réseau local · la version de bureau")
+	_bouton(local, "Héberger une partie", func(): heberger.emit())
 	var ligne := HBoxContainer.new()
-	_menu.add_child(ligne)
-	_reseau.append(ligne)
+	ligne.add_theme_constant_override("separation", 8)
+	local.add_child(ligne)
 	_adresse = LineEdit.new()
 	_adresse.text = "127.0.0.1"
 	_adresse.placeholder_text = "l'adresse de l'hôte"
 	_adresse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_adresse.add_theme_font_size_override("font_size", 20)
 	ligne.add_child(_adresse)
 	_bouton(ligne, "Rejoindre", func(): rejoindre.emit(_adresse.text.strip_edges()))
+	# — les réglages : son pseudo, le chat de Twitch, le micro, les commandes
+	var reglages := VBoxContainer.new()
+	reglages.add_theme_constant_override("separation", 10)
+	dans.add_child(reglages)
+	_volets["reglages"] = reglages
+	_pseudo_ligne = HBoxContainer.new()
+	_pseudo_ligne.add_theme_constant_override("separation", 8)
+	var pseudo_bloc := VBoxContainer.new()
+	pseudo_bloc.add_theme_constant_override("separation", 8)
+	reglages.add_child(pseudo_bloc)
+	_rubrique(pseudo_bloc, "Ton pseudo")
+	pseudo_bloc.add_child(_pseudo_ligne)
+	_pseudo = LineEdit.new()
+	_pseudo.placeholder_text = "16 lettres au plus"
+	_pseudo.max_length = 16
+	_pseudo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_pseudo_ligne.add_child(_pseudo)
+	_bouton(_pseudo_ligne, "Garder", func(): pseudo_choisi.emit(_pseudo.text))
+	_pseudo_ligne.visibility_changed.connect(func(): pseudo_bloc.visible = _pseudo_ligne.visible)
+	var twitch := VBoxContainer.new()
+	twitch.add_theme_constant_override("separation", 8)
+	reglages.add_child(twitch)
+	_en_ligne.append(twitch)
+	_rubrique(twitch, "Le chat vote les sabotages")
 	_chaine = LineEdit.new()
-	_chaine.placeholder_text = "ta chaîne Twitch, pour que ton chat vote (facultatif)"
-	_chaine.add_theme_font_size_override("font_size", 18)
-	_menu.add_child(_chaine)
-	_en_ligne.append(_chaine)
+	_chaine.placeholder_text = "ta chaîne Twitch (facultatif)"
+	twitch.add_child(_chaine)
+	_rubrique(reglages, "Le son")
 	_micro = CheckBox.new()
 	_micro.text = "La chose entend mon micro"
 	_micro.button_pressed = true
-	_micro.add_theme_font_size_override("font_size", 18)
-	_menu.add_child(_micro)
-	_aide = _texte(_menu, "ZQSD : marcher · Maj : courir (bruyant) · Ctrl : s'accroupir · Espace : sauter\n"
-		+ "E ou clic : prendre, poser · clic droit : lancer · F : torche (le fantôme la voit de loin) · V : crier · G : lancer un réveil · Échap : libérer la souris", 15, Color(0.6, 0.62, 0.66))
+	reglages.add_child(_micro)
+	_rubrique(reglages, "Les commandes")
+	_aide = _texte(reglages, AIDE, 15, Color(Charte.IVOIRE, 0.75))
+	_aide.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_volet("")
+
+
+const AIDE := "ZQSD : marcher · Maj : courir (bruyant)\nCtrl : s'accroupir · Espace : sauter\nE ou clic : prendre, poser · clic droit : lancer\nF : la torche (le fantôme la voit de loin)\nV : crier · G : lancer un réveil · Échap : la pause"
+const AIDE_DOIGT := "Le pouce gauche marche, le droit regarde en glissant.\nAgir : prendre, poser, klaxonner\nCourir (bruyant) et Bas restent enfoncés\n❚❚ en haut à droite : la pause"
+
+
+# le volet de droite : l'ouvrir sur ce contenu ; le même, ou "" : le fermer
+func _volet(nom: String) -> void:
+	if nom == _volet_ouvert:
+		nom = ""
+	_volet_ouvert = nom
+	_volet_carte.visible = nom != ""
+	for k in _volets:
+		_volets[k].visible = k == nom
+	_volet_titre.text = {"plusieurs": "Jouer à plusieurs", "reglages": "Réglages"}.get(nom, "")
+	_ajuster_menu.call_deferred()
+	for b in [_b_plusieurs, _b_reglages]:
+		b.add_theme_color_override("font_color", Charte.OR if (b == _b_plusieurs and nom == "plusieurs") or (b == _b_reglages and nom == "reglages") else Charte.IVOIRE)
+
+
+# où va chaque morceau du menu, selon la taille de l'écran : un téléphone couché a peu de hauteur
+func _ajuster_menu() -> void:
+	if _menu_colonne == null:
+		return
+	var ecran := get_viewport().get_visible_rect().size
+	var bas := ecran.y < 600.0
+	var etroit := ecran.x < 1000.0
+	var marge := 32.0 if bas else 72.0
+	_logo.add_theme_font_size_override("font_size", 64 if bas else 104)
+	_devise.add_theme_font_size_override("font_size", 17 if bas else 23)
+	for b in _menu.get_children():
+		b.add_theme_font_size_override("font_size", 23 if bas else 31)
+	_menu_colonne.position = Vector2(marge, 18.0 if bas else 52.0)
+	_menu_colonne.size = Vector2(minf(470.0, ecran.x * 0.45), 0.0)
+	_barre_compte.offset_top = 10.0 if bas else 22.0
+	_barre_compte.offset_bottom = _barre_compte.offset_top
+	_barre_compte.offset_right = -(16.0 if bas else 40.0)
+	_barre_compte.offset_left = _barre_compte.offset_right
+	# (le volet prend la hauteur de ce qu'il montre, sans dépasser l'écran : au-delà, il défile)
+	var large := 380.0 if etroit else 440.0
+	_volet_carte.position = Vector2(ecran.x - large - (16.0 if bas else 48.0), 46.0 if bas else 84.0)
+	var place := ecran.y - _volet_carte.position.y - (12.0 if bas else 48.0)
+	var contenu := _volet_dans.get_combined_minimum_size().y + 44.0
+	_volet_carte.custom_minimum_size = Vector2(large, minf(place, contenu))
+	_volet_carte.size = _volet_carte.custom_minimum_size
+
+
+# le portail StoneValley : dans un navigateur, on y va (la même fenêtre) ; sur un ordinateur, le navigateur l'ouvre
+func aller_au_portail() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.location.href = %s" % JSON.stringify(R.PORTAIL), true)
+	else:
+		OS.shell_open(R.PORTAIL)
 
 
 func _faire_connexion() -> void:
@@ -374,6 +602,51 @@ func bourse(t: String, dette: bool) -> void:
 	_bourse_texte.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35) if dette else Color(0.86, 0.86, 0.82))
 
 
+# la pause : reprendre, les commandes, quitter la nuit
+func _faire_pause() -> void:
+	_texte(_pause, "Pause", 54, Color(1.0, 0.86, 0.55))
+	_pause_dit = _texte(_pause, "", 18, Color(Charte.IVOIRE, 0.8))
+	_pause_retour = _bouton(_pause, "Reprendre", func(): pause_voulue.emit(false))
+	_pause_retour.theme_type_variation = "Principal"
+	_pause_b_aide = _bouton(_pause, "Les commandes", func():
+		_pause_aide.visible = not _pause_aide.visible
+		_pause_b_aide.text = "Cacher les commandes" if _pause_aide.visible else "Les commandes")
+	_pause_aide = _texte(_pause, AIDE, 15, Color(Charte.IVOIRE, 0.75))
+	_pause_aide.visible = false
+	_pause_quitter = _bouton(_pause, "Quitter la nuit", func(): quitter.emit())
+	_texte(_pause, "Échap : reprendre", 14, Charte.PALE)
+
+
+# la pause, montrée ou rangée : seul, le monde attend ; à plusieurs, la nuit continue (et l'hôte qui part la finit pour tous)
+func pause(oui: bool, seul: bool, hote: bool, vivant: bool) -> void:
+	if not oui:
+		_pause_aide.visible = false
+		_pause_b_aide.text = "Les commandes"
+		_montrer(_partie)
+		return
+	_pause_dit.text = "La nuit attend que tu reviennes." if seul else "La nuit continue : les autres portent, et la chose rôde.\nTu ne bouges plus tant que tu es ici."
+	if not vivant and not seul:
+		_pause_dit.text = "Tu es mort. Les autres finissent la nuit."
+	_pause_quitter.text = "Quitter la nuit" if seul or not hote else "Quitter la nuit (elle s'arrête pour tous)"
+	_montrer(_pause)
+
+
+# Échap : à la pause, on revient ; en pleine nuit, la pause ; au menu, le volet se ferme
+func _unhandled_input(e: InputEvent) -> void:
+	if not (e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_ESCAPE):
+		return
+	var jeu = get_parent()
+	if _pause.is_visible_in_tree():
+		pause_voulue.emit(false)
+	elif _partie.is_visible_in_tree() and jeu != null and "etat" in jeu and jeu.etat == jeu.PARTIE:
+		pause_voulue.emit(true)
+	elif _menu.is_visible_in_tree() and _volet_ouvert != "":
+		_volet("")
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
 func _faire_fin() -> void:
 	_fin_texte = _texte(_fin, "", 22)
 	# les boutons d'abord, toujours à l'écran ; la facture dessous, dans un cadre qui défile si elle est longue
@@ -480,7 +753,8 @@ func _animer_screamer() -> void:
 
 # où l'on joue : le bouton du menu passe de l'un à l'autre
 func lieu(nom: String) -> void:
-	_b_lieu.text = "Lieu : le bunker (plusieurs créatures, des radiations) — changer" if nom == "bunker" else "Lieu : le manoir hanté — changer"
+	_b_lieu.text = "Lieu : le bunker" if nom == "bunker" else "Lieu : le manoir hanté"
+	_b_lieu.tooltip_text = "Plusieurs créatures, des radiations. Changer de lieu." if nom == "bunker" else "Une seule chose y dort. Changer de lieu."
 
 
 # la dose de radiations : un compteur, et l'écran qui verdit
@@ -571,17 +845,22 @@ func _coin(ancre: int, ou: Vector2, t: Vector2, corps: int) -> Label:
 
 
 func _montrer(page: Control) -> void:
-	for p in [_menu, _connexion, _creation, _oubli, _nouveau, _salon, _fin, _boutique]:
-		p.get_parent().get_parent().visible = p == page
+	for p in _racines:
+		_racines[p].visible = p == page
 	_partie.visible = page == _partie
+	# (le manoir la nuit, derrière le menu et les pages qui ne sont pas de la partie ; l'ombre à gauche, au menu seulement)
+	_decor.visible = page in [_menu, _connexion, _creation, _oubli, _nouveau, _salon, _boutique]
+	_decor.gauche = 0.62 if page == _menu else 0.0
+	if page == _menu:
+		_ajuster_menu.call_deferred()
 
 
 # dans un navigateur, on joue seul : pas de port à ouvrir, et le micro attend qu'on le demande
 func passer_au_navigateur() -> void:
 	for c in _reseau:
 		c.visible = false
+	_b_quitter_jeu.visible = false          # (une page ne se ferme pas d'elle-même : on va au portail)
 	_micro.button_pressed = false
-	_aide.text += "\nDans un navigateur, on joue seul. À plusieurs : la version de bureau (Godot 4.3)."
 
 
 # sur une page qui ne laisse rien sortir vers le réseau : ni compte, ni chat de Twitch
@@ -593,7 +872,8 @@ func passer_hors_ligne() -> void:
 
 func passer_au_tactile() -> void:
 	_micro.button_pressed = false
-	_aide.text = "Le pouce gauche marche, le droit regarde en glissant.\nAgir : prendre, poser, klaxonner · Courir (bruyant) et Bas restent enfoncés."
+	_aide.text = AIDE_DOIGT
+	_pause_aide.text = AIDE_DOIGT
 
 
 # où sont les boutons et les champs qu'on voit, en pixels de la fenêtre : pour qu'un essai dans un navigateur clique au bon endroit
@@ -601,7 +881,9 @@ func reperes() -> Dictionary:
 	var vers := get_viewport().get_screen_transform()
 	var r := {}
 	var choses := {"email": _email, "mdp": _mdp, "connecter": _connexion_bouton, "sans_compte": _b_sans, "seul": _b_seul, "ouvrir": _ligne_creer, "code": _ligne_code,
-		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu, "partir": _b_partir, "compte": _compte_bouton}
+		"entrer": _b_entrer, "commencer": _salon_bouton, "boutique": _b_boutique, "lieu": _b_lieu, "partir": _b_partir, "compte": _compte_bouton,
+		"plusieurs": _b_plusieurs, "reglages": _b_reglages, "portail": _b_portail, "quitter_jeu": _b_quitter_jeu,
+		"pause_retour": _pause_retour, "pause_quitter": _pause_quitter, "pause_aide": _pause_b_aide}
 	for nom in _boutique_boutons:
 		choses[nom] = _boutique_boutons[nom]
 	for nom in _c:
@@ -633,7 +915,7 @@ func version(t: String) -> void:
 func menu(avis: String) -> void:
 	_avis.text = avis
 	_avis.visible = avis != ""
-	_montrer(_menu)
+	_montrer(_menu)          # (le volet reste comme on l'a laissé : un code refusé se retape sans le rouvrir)
 
 
 func page_connexion() -> void:

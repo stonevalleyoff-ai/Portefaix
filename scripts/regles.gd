@@ -2,6 +2,9 @@ extends RefCounted
 # Portefaix — les règles du jeu, en un seul endroit (scripts/regles.gd)
 # Tout ce qui se règle quand on équilibre le jeu est ici : la nuit, le corps, le portage, le bruit, la casse, la chose, le chat, le mobilier.
 
+# le portail StoneValley, où sont les autres jeux et le compte : le menu y ramène
+const PORTAIL := "https://stonevalleyoff-ai.github.io/"
+
 # le réseau : l'hôte ouvre ce port (UDP), les autres le rejoignent par son adresse
 const PORT := 24680
 const JOUEURS_MAX := 6

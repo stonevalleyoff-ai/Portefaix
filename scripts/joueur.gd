@@ -245,7 +245,7 @@ func mourir() -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if not local or pilote or principal.etat != principal.PARTIE or principal.tactile.actif:
+	if not local or pilote or principal.etat != principal.PARTIE or principal.en_pause or principal.tactile.actif:
 		return      # (au doigt, c'est scripts/tactile.gd qui mène : un toucher fait aussi un clic, qui ne doit rien prendre)
 	var pris := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if e is InputEventMouseMotion:
@@ -277,8 +277,6 @@ func _unhandled_input(e: InputEvent) -> void:
 				crier()
 			KEY_G:
 				principal.lancer_leurre()
-			KEY_ESCAPE:
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func lancer() -> void:
@@ -318,7 +316,7 @@ func _physics_process(dt: float) -> void:
 		global_position = global_position.lerp(cible_pos, minf(1.0, dt * 14.0))
 		_regarder(dt)
 		return
-	var joue: bool = principal.etat == principal.PARTIE
+	var joue: bool = principal.etat == principal.PARTIE and not principal.en_pause
 	var doigt = principal.tactile          # le joystick et les boutons d'un écran tactile s'ajoutent au clavier
 	var avance := clampf(_touche(KEY_W, KEY_UP) - _touche(KEY_S, KEY_DOWN) - doigt.vecteur.y, -1.0, 1.0) if joue else 0.0
 	var cote := clampf(_touche(KEY_D, KEY_RIGHT) - _touche(KEY_A, KEY_LEFT) + doigt.vecteur.x, -1.0, 1.0) if joue else 0.0

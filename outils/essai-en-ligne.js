@@ -91,8 +91,11 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   await ada.ecrire('email', 'ada@exemple.fr'); await ada.ecrire('mdp', 'bon'); await ada.p.keyboard.press('Enter');
   await cleo.ecrire('email', 'cleo@exemple.fr'); await cleo.ecrire('mdp', 'bon'); await cleo.cliquer('connecter');
   const noms = { ada: 'Ada', bob: 'Bob', cleo: 'Porteur' };
-  for (const j of tous) verif(await j.attendre('le menu', e => e.connecte && e.pseudo === noms[j.nom] && e.reperes.ouvrir && e.reperes.code),
-    `${j.nom} : connecté (« ${noms[j.nom]} »), le menu propose d'ouvrir un salon ou d'entrer par un code`);
+  for (const j of tous) {
+    await j.cliquer('plusieurs');          // (le menu : « Jouer à plusieurs » ouvre le volet du jeu en ligne)
+    verif(await j.attendre('le menu', e => e.connecte && e.pseudo === noms[j.nom] && e.reperes.ouvrir && e.reperes.code),
+      `${j.nom} : connecté (« ${noms[j.nom]} »), « Jouer à plusieurs » propose d'ouvrir un salon ou d'entrer par un code`);
+  }
 
   console.log('2. Le salon et son code');
   await ada.cliquer('ouvrir');
@@ -106,6 +109,7 @@ const verif = (c, m) => { n++; ok = ok && !!c; console.log((c ? '  ✓ ' : '  �
   const ada2 = await joueur('ada2');
   await ada2.attendre('la page', e => e.etat === 'menu' && e.reperes.email, 120000);
   await ada2.ecrire('email', 'ada@exemple.fr'); await ada2.ecrire('mdp', 'bon'); await ada2.cliquer('connecter');
+  await ada2.cliquer('plusieurs');
   await ada2.attendre('le menu', e => e.connecte && e.reperes.code, 30000);
   await ada2.ecrire('code', code); await ada2.p.keyboard.press('Enter');
   verif(await ada2.attendre('le refus', e => e.etat === 'menu' && /ton propre salon/.test(e.avis), 20000) && service.salons.get(code).membres.length === 2,

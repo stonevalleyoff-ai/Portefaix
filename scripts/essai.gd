@@ -321,6 +321,16 @@ func _bonus(Maison, Amenagement) -> void:
 
 func _seul() -> void:
 	_maisons()
+	print("0. Le menu")
+	var r0: Dictionary = jeu.ui.reperes()
+	var entrees: bool = ["seul", "plusieurs", "lieu", "boutique", "reglages", "portail"].all(func(k): return r0.has(k))
+	jeu.ui._volet("plusieurs")
+	var volet: bool = jeu.ui._volet_carte.visible and jeu.ui._volets["plusieurs"].visible and not jeu.ui._volets["reglages"].visible
+	jeu.ui._volet("reglages")
+	var autre: bool = jeu.ui._volets["reglages"].visible and not jeu.ui._volets["plusieurs"].visible and jeu.ui._micro.is_visible_in_tree()
+	jeu.ui._volet("reglages")
+	verif(entrees and volet and autre and not jeu.ui._volet_carte.visible and jeu.ui._decor.visible and R.PORTAIL == "https://stonevalleyoff-ai.github.io/",
+		"le menu : jouer seul, à plusieurs, le lieu, la boutique, les réglages, le retour au portail ; le volet s'ouvre, change, se referme ; le manoir derrière")
 	jeu.graine = -7                # la maison d'essai, toujours la même : l'essai ne dépend pas du hasard
 	jeu.jouer_seul()
 	await _attendre(0.3)
@@ -1106,6 +1116,24 @@ func _argent() -> void:
 	jeu.ui.peut_partir(true)
 	verif(avant_la_mort and jeu.ui.reperes().has("partir"), "mort, un bouton « Quitter la partie » apparaît en haut de l'écran ; vivant, il n'y est pas")
 	jeu.ui.peut_partir(false)
+	# la pause : Échap ; seul, la nuit s'arrête (l'horloge, la chose) ; Échap encore, ou « Reprendre », la relance
+	var echap := InputEventKey.new()
+	echap.physical_keycode = KEY_ESCAPE
+	echap.keycode = KEY_ESCAPE
+	echap.pressed = true
+	var heure: float = jeu.temps
+	Input.parse_input_event(echap)
+	await _attendre(0.5)
+	var r1: Dictionary = jeu.ui.reperes()
+	var arretee: bool = jeu.en_pause and get_tree().paused and absf(jeu.temps - heure) < 0.0001 and jeu.ui._pause.is_visible_in_tree() and not jeu.ui._partie.visible \
+		and r1.has("pause_retour") and r1.has("pause_quitter") and jeu.ui._pause_dit.text.contains("attend")
+	Input.parse_input_event(echap)
+	await _attendre(0.3)
+	var reprise: bool = not jeu.en_pause and not get_tree().paused and jeu.temps < heure and jeu.ui._partie.visible
+	jeu.mettre_en_pause(true)
+	jeu.ui._pause_retour.pressed.emit()
+	verif(arretee and reprise and not jeu.en_pause and not get_tree().paused and jeu.etat == jeu.PARTIE,
+		"la pause (Échap) : seul, la nuit s'arrête, l'horloge aussi ; Échap ou « Reprendre » la relance")
 	# une mauvaise nuit : la dette, ses intérêts, l'huissier
 	b.argent = 100
 	jeu.charge = 0
